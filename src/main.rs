@@ -6,7 +6,6 @@ use magicpointerv2::screencapture;
 use magicpointerv2::selection_overlay::{self, Rect};
 use magicpointerv2::ui;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing::{error, info};
 
 fn load_custom_css() {
@@ -56,21 +55,26 @@ fn main() {
             move |rect: Rect| {
                 info!("Region selected: {:?}", rect);
 
-                match screencapture::capture_screen_region(rect.x, rect.y, rect.width, rect.height) {
+                match screencapture::capture_screen_region(rect.x, rect.y, rect.width, rect.height)
+                {
                     Ok(image) => {
-                        info!("Captured screen buffer ({}x{}) into RAM", image.width(), image.height());
+                        info!(
+                            "Captured screen buffer ({}x{}) into RAM",
+                            image.width(),
+                            image.height()
+                        );
 
                         let session = ConversationSession::new();
-                        let (token_tx, token_rx) = mpsc::channel::<String>(64);
 
                         let context_label = hypr_ipc::get_hyprland_state().ok().and_then(|s| {
-                            s.active_window.map(|w| format!("{} ({})", w.class, w.title))
+                            s.active_window
+                                .map(|w| format!("{} ({})", w.class, w.title))
                         });
 
                         let card_window = ui::build_floating_card(
                             &app_handle,
+                            image,
                             context_label,
-                            token_rx,
                             session.clone(),
                             rt_handle.clone(),
                         );
@@ -82,21 +86,6 @@ fn main() {
                         });
 
                         card_window.present();
-
-                        let session_spawn = session.clone();
-                        let error_tx = token_tx.clone();
-                        rt_handle.spawn(async move {
-                            let initial_prompt = "Analyze this UI element / screen capture concisely. If it contains text or code, transcribe and explain it. If it contains a button or actionable item, provide context and quick next steps.";
-                            if let Err(e) = session_spawn.add_user_initial_turn(&image, initial_prompt).await {
-                                error!("Failed to create initial turn: {}", e);
-                                let _ = error_tx.send(format!("[Error: {e}]")).await;
-                                return;
-                            }
-                            if let Err(e) = session_spawn.stream_next_turn(token_tx).await {
-                                error!("AI multimodal stream error: {}", e);
-                                let _ = error_tx.send(format!("[Error: {e}]")).await;
-                            }
-                        });
                     }
                     Err(e) => {
                         error!("Screen capture error: {}", e);

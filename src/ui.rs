@@ -5,6 +5,7 @@ use crate::executor;
 use gtk4::gdk;
 use gtk4::glib;
 use gtk4::prelude::*;
+use image::DynamicImage;
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -13,8 +14,8 @@ use tracing::error;
 
 pub fn build_floating_card(
     app: &gtk4::Application,
+    captured_image: DynamicImage,
     captured_context: Option<String>,
-    initial_token_rx: mpsc::Receiver<String>,
     session: ConversationSession,
     tokio_rt: Arc<tokio::runtime::Runtime>,
 ) -> gtk4::ApplicationWindow {
@@ -38,11 +39,7 @@ pub fn build_floating_card(
     let title_label = gtk4::Label::new(Some("Magic Pointer"));
     title_label.add_css_class("magic-title");
 
-    let status_label = gtk4::Label::new(Some(if let Some(ref ctx) = captured_context {
-        ctx.as_str()
-    } else {
-        "Thinking..."
-    }));
+    let status_label = gtk4::Label::new(Some("Ready"));
     status_label.add_css_class("magic-status");
     status_label.set_hexpand(true);
     status_label.set_halign(gtk4::Align::Start);
@@ -69,27 +66,32 @@ pub fn build_floating_card(
 
     // --- Chat Thread View ---
     let scrolled = gtk4::ScrolledWindow::new();
+    scrolled.add_css_class("chat-history");
     scrolled.set_vexpand(true);
     scrolled.set_hexpand(true);
     scrolled.set_hscrollbar_policy(gtk4::PolicyType::Never);
 
     let messages_box = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
+    messages_box.add_css_class("chat-messages");
     scrolled.set_child(Some(&messages_box));
     card.append(&scrolled);
 
     // Function to add a styled AI message bubble
-    let initial_bubble = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    initial_bubble.add_css_class("chat-bubble-ai");
-
-    let initial_response = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-    initial_response.add_css_class("markdown-content");
-    let placeholder = gtk4::Label::new(Some("Analyzing screen capture..."));
-    placeholder.add_css_class("markdown-paragraph");
-    placeholder.set_wrap(true);
-    placeholder.set_xalign(0.0);
-    initial_response.append(&placeholder);
-    initial_bubble.append(&initial_response);
-    messages_box.append(&initial_bubble);
+    let selection_notice = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
+    selection_notice.add_css_class("selection-notice");
+    let selection_icon = gtk4::Image::from_icon_name("image-x-generic-symbolic");
+    selection_icon.add_css_class("selection-notice-icon");
+    let selection_message = match captured_context.as_deref() {
+        Some(context) => format!("Capture ready from {context}. Ask a question to get started."),
+        None => "Screenshot attached. Ask a question to get started.".to_string(),
+    };
+    let selection_label = gtk4::Label::new(Some(&selection_message));
+    selection_label.add_css_class("selection-notice-label");
+    selection_label.set_wrap(true);
+    selection_label.set_xalign(0.0);
+    selection_notice.append(&selection_icon);
+    selection_notice.append(&selection_label);
+    messages_box.append(&selection_notice);
 
     let last_ai_text = Rc::new(RefCell::new(String::new()));
     let last_ai_clone = last_ai_text.clone();
@@ -145,16 +147,13 @@ pub fn build_floating_card(
         }
     };
 
-    // Connect initial screenshot turn stream
-    attach_streaming_receiver(initial_token_rx, initial_response);
-
     // --- Interactive Chat Input Bar + Resize Corner ---
     let bottom_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     bottom_row.add_css_class("chat-input-bar");
 
     let entry = gtk4::Entry::new();
     entry.add_css_class("chat-entry");
-    entry.set_placeholder_text(Some("Ask a follow-up question..."));
+    entry.set_placeholder_text(Some("Ask a question about this selection..."));
     entry.set_hexpand(true);
 
     let send_btn = gtk4::Button::with_label("Send");
@@ -172,6 +171,9 @@ pub fn build_floating_card(
     let on_submit_session = session.clone();
     let on_submit_rt = tokio_rt.clone();
     let on_submit_attach = attach_streaming_receiver.clone();
+    let on_submit_image = Rc::new(RefCell::new(Some(captured_image)));
+    let on_submit_image_state = on_submit_image.clone();
+    let status_weak = status_label.downgrade();
 
     let submit_action = move || {
         let text = on_submit_entry.text().to_string();
@@ -186,6 +188,7 @@ pub fn build_floating_card(
         user_bubble.add_css_class("chat-bubble-user");
 
         let user_label = gtk4::Label::new(Some(&text));
+        user_label.add_css_class("chat-message-text");
         user_label.set_wrap(true);
         user_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         user_label.set_selectable(true);
@@ -206,10 +209,23 @@ pub fn build_floating_card(
         let (token_tx, token_rx) = mpsc::channel::<String>(64);
         on_submit_attach(token_rx, ai_response);
         let error_tx = token_tx.clone();
+        let captured_image = on_submit_image_state.borrow_mut().take();
+        if let Some(status) = status_weak.upgrade() {
+            status.set_text("Thinking...");
+        }
 
         let session_clone = on_submit_session.clone();
         on_submit_rt.spawn(async move {
-            session_clone.add_user_follow_up(&text).await;
+            if let Some(image) = captured_image {
+                if let Err(e) = session_clone.add_user_initial_turn(&image, &text).await {
+                    error!("Failed to create initial turn: {}", e);
+                    let _ = error_tx.send(format!("[Error: {e}]")).await;
+                    return;
+                }
+            } else {
+                session_clone.add_user_follow_up(&text).await;
+            }
+
             if let Err(e) = session_clone.stream_next_turn(token_tx).await {
                 error!("Error streaming follow up: {}", e);
                 let _ = error_tx.send(format!("[Error: {e}]")).await;

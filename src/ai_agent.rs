@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::env;
+use std::fmt;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,7 +29,9 @@ struct GeminiStreamChunk {
 
 #[derive(Debug, Deserialize)]
 struct GeminiError {
+    code: Option<u16>,
     message: String,
+    status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +48,22 @@ struct CandidateContent {
 struct CandidatePart {
     text: Option<String>,
 }
+
+#[derive(Debug)]
+struct GeminiOverloadedError {
+    message: String,
+}
+
+impl fmt::Display for GeminiOverloadedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for GeminiOverloadedError {}
+
+const MODEL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
+const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn take_sse_event(buffer: &mut String, end_of_stream: bool) -> Option<String> {
     let lf_boundary = buffer.find("\n\n").map(|index| (index, 2));
@@ -93,6 +112,14 @@ fn parse_gemini_event(event: &str) -> Result<Vec<String>> {
     let parsed = serde_json::from_str::<GeminiStreamChunk>(&data)
         .map_err(|e| anyhow!("Invalid Gemini SSE response: {e}"))?;
     if let Some(err) = parsed.error {
+        if err.code == Some(503)
+            || err.status.as_deref() == Some("UNAVAILABLE")
+            || err.message.to_ascii_lowercase().contains("high demand")
+        {
+            return Err(anyhow::Error::new(GeminiOverloadedError {
+                message: err.message,
+            }));
+        }
         return Err(anyhow!("Gemini streaming error: {}", err.message));
     }
 
@@ -108,9 +135,9 @@ fn parse_gemini_event(event: &str) -> Result<Vec<String>> {
 }
 
 const MODELS_TO_TRY: &[&str] = &[
+    "gemini-3.1-flash-lite",
     "gemini-flash-lite-latest",
     "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
     "gemini-2.5-flash-lite",
     "gemini-flash-latest",
     "gemini-3.8-flash",
@@ -201,112 +228,217 @@ impl ConversationSession {
             .connect_timeout(Duration::from_secs(12))
             .build()?;
 
+        let mut partial_response = String::new();
+
         for (i, &model_name) in MODELS_TO_TRY.iter().enumerate() {
-            let mut retry_count = 0;
-            let max_retries = 2;
+            let url = if let Some(ref key) = api_key {
+                format!(
+                    "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
+                    model_name, key
+                )
+            } else {
+                format!(
+                    "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
+                    model_name
+                )
+            };
 
-            while retry_count <= max_retries {
-                let url = if let Some(ref key) = api_key {
-                    format!(
-                        "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
-                        model_name, key
-                    )
-                } else {
-                    format!(
-                        "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
-                        model_name
-                    )
+            info!("Connecting to model: {}...", model_name);
+
+            let mut req = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body);
+
+            if let Some(ref bearer) = bearer_token {
+                req = req.header("Authorization", format!("Bearer {}", bearer));
+            }
+
+            let res = match tokio::time::timeout(MODEL_RESPONSE_TIMEOUT, req.send()).await {
+                Err(_) => {
+                    let reason = format!(
+                        "timed out waiting for a response after {} seconds",
+                        MODEL_RESPONSE_TIMEOUT.as_secs()
+                    );
+                    warn!("Model {} {}", model_name, reason);
+                    if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                        let _ = token_tx
+                            .send(format!(
+                                "[{} {}; trying {}...]\n\n",
+                                model_name, reason, next_model
+                            ))
+                            .await;
+                        continue;
+                    }
+                    return Err(anyhow!("Model {} {}", model_name, reason));
+                }
+                Ok(Err(e)) => {
+                    warn!(
+                        "Connection error with {}: {}. Trying the next model.",
+                        model_name, e
+                    );
+                    if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                        let _ = token_tx
+                            .send(format!(
+                                "[{} could not be reached; trying {}...]\n\n",
+                                model_name, next_model
+                            ))
+                            .await;
+                        continue;
+                    }
+                    return Err(anyhow!("Connection to {} failed: {}", model_name, e));
+                }
+                Ok(Ok(response)) => response,
+            };
+
+            let status = res.status();
+            if !status.is_success() {
+                let err_text = match tokio::time::timeout(Duration::from_secs(5), res.text()).await
+                {
+                    Ok(Ok(text)) => text,
+                    Ok(Err(error)) => format!("Could not read error response: {error}"),
+                    Err(_) => "Timed out reading error response".to_string(),
                 };
-
-                info!(
-                    "Connecting to model: {} (attempt {})...",
-                    model_name,
-                    retry_count + 1
+                warn!(
+                    "Model {} returned status {}: {}",
+                    model_name, status, err_text
                 );
 
-                let mut req = client
-                    .post(&url)
-                    .header("Content-Type", "application/json")
-                    .json(&body);
-
-                if let Some(ref bearer) = bearer_token {
-                    req = req.header("Authorization", format!("Bearer {}", bearer));
+                if (status.as_u16() == 404 || status.as_u16() == 503 || status.as_u16() == 429)
+                    && i + 1 < MODELS_TO_TRY.len()
+                {
+                    let reason = match status.as_u16() {
+                        404 => "is unavailable",
+                        429 => "is rate limited",
+                        _ => "is overloaded",
+                    };
+                    let _ = token_tx
+                        .send(format!(
+                            "[{} {}; trying {}...]\n\n",
+                            model_name,
+                            reason,
+                            MODELS_TO_TRY[i + 1]
+                        ))
+                        .await;
+                    continue;
                 }
+                return Err(anyhow!("Gemini API error ({}): {}", model_name, err_text));
+            }
 
-                let res = match req.send().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        warn!("Connection error with {}: {}. Retrying...", model_name, e);
-                        retry_count += 1;
-                        tokio::time::sleep(Duration::from_millis(500 * (retry_count as u64))).await;
-                        continue;
-                    }
-                };
+            let mut stream = res.bytes_stream();
+            let mut buffer = String::new();
+            let mut full_accumulated = String::new();
+            let mut overload_error = None;
 
-                let status = res.status();
-                if !status.is_success() {
-                    let err_text = res.text().await.unwrap_or_default();
-                    warn!(
-                        "Model {} returned status {}: {}",
-                        model_name, status, err_text
-                    );
-
-                    if status.as_u16() == 503 && retry_count < max_retries {
-                        retry_count += 1;
-                        let _ = token_tx
-                            .send(format!("[{} high demand, retrying...]\n", model_name))
-                            .await;
-                        tokio::time::sleep(Duration::from_millis(1000 * (retry_count as u64)))
-                            .await;
-                        continue;
-                    }
-
-                    if (status.as_u16() == 404 || status.as_u16() == 503 || status.as_u16() == 429)
-                        && i + 1 < MODELS_TO_TRY.len()
-                    {
-                        let _ = token_tx
-                            .send(format!("[Falling back to {}...]\n\n", MODELS_TO_TRY[i + 1]))
-                            .await;
+            'read_stream: loop {
+                let chunk_res = match tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()).await
+                {
+                    Ok(Some(chunk_res)) => chunk_res,
+                    Ok(None) => break,
+                    Err(_) => {
+                        overload_error = Some(format!(
+                            "stopped responding for {} seconds",
+                            STREAM_IDLE_TIMEOUT.as_secs()
+                        ));
                         break;
                     }
-                    return Err(anyhow!("Gemini API error ({}): {}", model_name, err_text));
-                }
-
-                let mut stream = res.bytes_stream();
-                let mut buffer = String::new();
-                let mut full_accumulated = String::new();
-
-                while let Some(chunk_res) = stream.next().await {
-                    let chunk = chunk_res?;
-                    let text = String::from_utf8_lossy(&chunk);
-                    buffer.push_str(&text);
-
-                    while let Some(event) = take_sse_event(&mut buffer, false) {
-                        for text in parse_gemini_event(&event)? {
-                            full_accumulated.push_str(&text);
-                            let _ = token_tx.send(text).await;
-                        }
+                };
+                let chunk = match chunk_res {
+                    Ok(chunk) => chunk,
+                    Err(error) => {
+                        overload_error = Some(format!("stream failed: {error}"));
+                        break;
                     }
-                }
+                };
+                let text = String::from_utf8_lossy(&chunk);
+                buffer.push_str(&text);
 
-                if let Some(event) = take_sse_event(&mut buffer, true) {
-                    for text in parse_gemini_event(&event)? {
+                while let Some(event) = take_sse_event(&mut buffer, false) {
+                    let texts = match parse_gemini_event(&event) {
+                        Ok(texts) => texts,
+                        Err(error) => {
+                            if let Some(overloaded) = error.downcast_ref::<GeminiOverloadedError>()
+                            {
+                                overload_error =
+                                    Some(format!("is overloaded: {}", overloaded.message));
+                                break 'read_stream;
+                            }
+                            return Err(error);
+                        }
+                    };
+                    for text in texts {
                         full_accumulated.push_str(&text);
                         let _ = token_tx.send(text).await;
                     }
                 }
+            }
 
-                if full_accumulated.is_empty() {
-                    return Err(anyhow!(
-                        "Gemini completed the stream without returning text."
+            if overload_error.is_none() {
+                if let Some(event) = take_sse_event(&mut buffer, true) {
+                    let texts = match parse_gemini_event(&event) {
+                        Ok(texts) => texts,
+                        Err(error) => {
+                            if let Some(overloaded) = error.downcast_ref::<GeminiOverloadedError>()
+                            {
+                                overload_error =
+                                    Some(format!("is overloaded: {}", overloaded.message));
+                                Vec::new()
+                            } else {
+                                return Err(error);
+                            }
+                        }
+                    };
+                    for text in texts {
+                        full_accumulated.push_str(&text);
+                        let _ = token_tx.send(text).await;
+                    }
+                }
+            }
+
+            if let Some(message) = overload_error {
+                warn!("Model {} {}; moving to fallback", model_name, message);
+                if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                    let _ = token_tx
+                        .send(format!(
+                            "\n\n[{} {}; trying {}...]\n\n",
+                            model_name, message, next_model
+                        ))
+                        .await;
+                    partial_response.push_str(&full_accumulated);
+                    partial_response.push_str(&format!(
+                        "\n\n[{} {}; trying {}...]\n\n",
+                        model_name, message, next_model
                     ));
+                    continue;
                 }
 
-                // Save assistant answer in history for follow-ups
-                self.add_model_response(&full_accumulated).await;
-                info!("Finished response from {}", model_name);
-                return Ok(());
+                return Err(anyhow!(
+                    "Gemini model {} {} and no fallback models remain",
+                    model_name,
+                    message
+                ));
             }
+
+            if full_accumulated.is_empty() {
+                let reason = "completed without returning text";
+                if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                    warn!("Model {} {}; trying {}", model_name, reason, next_model);
+                    let _ = token_tx
+                        .send(format!(
+                            "[{} {}; trying {}...]\n\n",
+                            model_name, reason, next_model
+                        ))
+                        .await;
+                    continue;
+                }
+                return Err(anyhow!("Gemini model {} {}", model_name, reason));
+            }
+
+            // Save assistant answer in history for follow-ups
+            partial_response.push_str(&full_accumulated);
+            self.add_model_response(&partial_response).await;
+            info!("Finished response from {}", model_name);
+            return Ok(());
         }
 
         Err(anyhow!("All Gemini model endpoints failed"))
@@ -315,7 +447,7 @@ impl ConversationSession {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_gemini_event, sse_event_data, take_sse_event};
+    use super::{GeminiOverloadedError, parse_gemini_event, sse_event_data, take_sse_event};
 
     #[test]
     fn parses_lf_and_crlf_sse_boundaries() {
@@ -356,5 +488,15 @@ mod tests {
             .unwrap(),
             vec!["Hello"]
         );
+    }
+
+    #[test]
+    fn identifies_gemini_503_stream_errors_as_retryable() {
+        let error = parse_gemini_event(
+            "data: {\"error\":{\"code\":503,\"message\":\"Service unavailable\",\"status\":\"UNAVAILABLE\"}}",
+        )
+        .unwrap_err();
+
+        assert!(error.downcast_ref::<GeminiOverloadedError>().is_some());
     }
 }
