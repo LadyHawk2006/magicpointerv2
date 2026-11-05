@@ -61,4 +61,3 @@ pub fn clear_credentials() -> Result<()> {
         Err(anyhow!("Failed to clear credentials from system keyring"))
     }
 }
-

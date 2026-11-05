@@ -10,4 +10,3 @@ pub fn copy_to_clipboard(text: &str) -> Result<()> {
     info!("Successfully copied {} bytes to Wayland clipboard", text.len());
     Ok(())
 }
-

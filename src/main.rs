@@ -2,9 +2,9 @@ use gtk4::gdk;
 use gtk4::prelude::*;
 use magicpointerv2::ai_agent::ConversationSession;
 use magicpointerv2::hypr_ipc;
-use magicpointerv2::overlay_ui;
 use magicpointerv2::screencapture;
 use magicpointerv2::selection_overlay::{self, Rect};
+use magicpointerv2::ui;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -70,7 +70,7 @@ fn main() {
                         let card_x = rect.x + (rect.width as i32 / 2);
                         let card_y = rect.y + rect.height as i32;
 
-                        let card_window = overlay_ui::build_floating_card(
+                        let card_window = ui::build_floating_card(
                             &app_handle,
                             card_x,
                             card_y,
@@ -89,14 +89,17 @@ fn main() {
                         card_window.present();
 
                         let session_spawn = session.clone();
+                        let error_tx = token_tx.clone();
                         rt_handle.spawn(async move {
                             let initial_prompt = "Analyze this UI element / screen capture concisely. If it contains text or code, transcribe and explain it. If it contains a button or actionable item, provide context and quick next steps.";
                             if let Err(e) = session_spawn.add_user_initial_turn(&image, initial_prompt).await {
                                 error!("Failed to create initial turn: {}", e);
+                                let _ = error_tx.send(format!("[Error: {e}]")).await;
                                 return;
                             }
                             if let Err(e) = session_spawn.stream_next_turn(token_tx).await {
                                 error!("AI multimodal stream error: {}", e);
+                                let _ = error_tx.send(format!("[Error: {e}]")).await;
                             }
                         });
                     }

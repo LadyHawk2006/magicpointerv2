@@ -1,16 +1,16 @@
 use crate::auth::AuthManager;
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use anyhow::{Result, anyhow};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::StreamExt;
 use image::DynamicImage;
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tracing::{info, warn};
 
 pub fn encode_image_png_base64(image: &DynamicImage) -> Result<String> {
@@ -44,6 +44,67 @@ struct CandidateContent {
 #[derive(Debug, Deserialize)]
 struct CandidatePart {
     text: Option<String>,
+}
+
+fn take_sse_event(buffer: &mut String, end_of_stream: bool) -> Option<String> {
+    let lf_boundary = buffer.find("\n\n").map(|index| (index, 2));
+    let crlf_boundary = buffer.find("\r\n\r\n").map(|index| (index, 4));
+    let boundary = match (lf_boundary, crlf_boundary) {
+        (Some(lf), Some(crlf)) => Some(if lf.0 <= crlf.0 { lf } else { crlf }),
+        (Some(lf), None) => Some(lf),
+        (None, Some(crlf)) => Some(crlf),
+        (None, None) => None,
+    };
+
+    if let Some((index, boundary_len)) = boundary {
+        let event = buffer[..index].to_string();
+        buffer.drain(..index + boundary_len);
+        return Some(event);
+    }
+
+    if end_of_stream && !buffer.trim().is_empty() {
+        return Some(std::mem::take(buffer));
+    }
+
+    None
+}
+
+fn sse_event_data(event: &str) -> Option<String> {
+    let data = event
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("data:")
+                .map(|value| value.strip_prefix(' ').unwrap_or(value))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    (!data.is_empty()).then_some(data)
+}
+
+fn parse_gemini_event(event: &str) -> Result<Vec<String>> {
+    let Some(data) = sse_event_data(event) else {
+        return Ok(Vec::new());
+    };
+    if data == "[DONE]" {
+        return Ok(Vec::new());
+    }
+
+    let parsed = serde_json::from_str::<GeminiStreamChunk>(&data)
+        .map_err(|e| anyhow!("Invalid Gemini SSE response: {e}"))?;
+    if let Some(err) = parsed.error {
+        return Err(anyhow!("Gemini streaming error: {}", err.message));
+    }
+
+    Ok(parsed
+        .candidates
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|candidate| candidate.content)
+        .flat_map(|content| content.parts.unwrap_or_default())
+        .filter_map(|part| part.text)
+        .filter(|text| !text.is_empty())
+        .collect())
 }
 
 const MODELS_TO_TRY: &[&str] = &[
@@ -125,7 +186,9 @@ impl ConversationSession {
         let (bearer_token, api_key) = if let Ok(token) = auth_manager.get_access_token().await {
             (Some(token), None)
         } else {
-            let key = env::var("GEMINI_API_KEY").or_else(|_| env::var("GOOGLE_API_KEY")).ok();
+            let key = env::var("GEMINI_API_KEY")
+                .or_else(|_| env::var("GOOGLE_API_KEY"))
+                .ok();
             (None, key)
         };
 
@@ -155,7 +218,11 @@ impl ConversationSession {
                     )
                 };
 
-                info!("Connecting to model: {} (attempt {})...", model_name, retry_count + 1);
+                info!(
+                    "Connecting to model: {} (attempt {})...",
+                    model_name,
+                    retry_count + 1
+                );
 
                 let mut req = client
                     .post(&url)
@@ -179,17 +246,27 @@ impl ConversationSession {
                 let status = res.status();
                 if !status.is_success() {
                     let err_text = res.text().await.unwrap_or_default();
-                    warn!("Model {} returned status {}: {}", model_name, status, err_text);
+                    warn!(
+                        "Model {} returned status {}: {}",
+                        model_name, status, err_text
+                    );
 
                     if status.as_u16() == 503 && retry_count < max_retries {
                         retry_count += 1;
-                        let _ = token_tx.send(format!("[{} high demand, retrying...]\n", model_name)).await;
-                        tokio::time::sleep(Duration::from_millis(1000 * (retry_count as u64))).await;
+                        let _ = token_tx
+                            .send(format!("[{} high demand, retrying...]\n", model_name))
+                            .await;
+                        tokio::time::sleep(Duration::from_millis(1000 * (retry_count as u64)))
+                            .await;
                         continue;
                     }
 
-                    if (status.as_u16() == 404 || status.as_u16() == 503 || status.as_u16() == 429) && i + 1 < MODELS_TO_TRY.len() {
-                        let _ = token_tx.send(format!("[Falling back to {}...]\n\n", MODELS_TO_TRY[i + 1])).await;
+                    if (status.as_u16() == 404 || status.as_u16() == 503 || status.as_u16() == 429)
+                        && i + 1 < MODELS_TO_TRY.len()
+                    {
+                        let _ = token_tx
+                            .send(format!("[Falling back to {}...]\n\n", MODELS_TO_TRY[i + 1]))
+                            .await;
                         break;
                     }
                     return Err(anyhow!("Gemini API error ({}): {}", model_name, err_text));
@@ -204,38 +281,25 @@ impl ConversationSession {
                     let text = String::from_utf8_lossy(&chunk);
                     buffer.push_str(&text);
 
-                    while let Some(pos) = buffer.find("\n\n") {
-                        let event_block = buffer[..pos].to_string();
-                        buffer = buffer[pos + 2..].to_string();
-
-                        for line in event_block.lines() {
-                            if let Some(data) = line.strip_prefix("data: ") {
-                                if let Ok(parsed) = serde_json::from_str::<GeminiStreamChunk>(data) {
-                                    if let Some(err) = parsed.error {
-                                        let _ = token_tx.send(format!("\n\n[API Error: {}]", err.message)).await;
-                                        return Err(anyhow!("Gemini streaming error: {}", err.message));
-                                    }
-
-                                    if let Some(candidates) = parsed.candidates {
-                                        for cand in candidates {
-                                            if let Some(content) = cand.content {
-                                                if let Some(parts) = content.parts {
-                                                    for part in parts {
-                                                        if let Some(t) = part.text {
-                                                            if !t.is_empty() {
-                                                                full_accumulated.push_str(&t);
-                                                                let _ = token_tx.send(t).await;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    while let Some(event) = take_sse_event(&mut buffer, false) {
+                        for text in parse_gemini_event(&event)? {
+                            full_accumulated.push_str(&text);
+                            let _ = token_tx.send(text).await;
                         }
                     }
+                }
+
+                if let Some(event) = take_sse_event(&mut buffer, true) {
+                    for text in parse_gemini_event(&event)? {
+                        full_accumulated.push_str(&text);
+                        let _ = token_tx.send(text).await;
+                    }
+                }
+
+                if full_accumulated.is_empty() {
+                    return Err(anyhow!(
+                        "Gemini completed the stream without returning text."
+                    ));
                 }
 
                 // Save assistant answer in history for follow-ups
@@ -246,5 +310,51 @@ impl ConversationSession {
         }
 
         Err(anyhow!("All Gemini model endpoints failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_gemini_event, sse_event_data, take_sse_event};
+
+    #[test]
+    fn parses_lf_and_crlf_sse_boundaries() {
+        for separator in ["\n\n", "\r\n\r\n"] {
+            let mut buffer = format!("data: {{\"text\":\"hello\"}}{separator}data: [DONE]");
+            assert_eq!(
+                take_sse_event(&mut buffer, false).as_deref(),
+                Some("data: {\"text\":\"hello\"}")
+            );
+            assert_eq!(
+                sse_event_data("data: {\"text\":\"hello\"}").as_deref(),
+                Some("{\"text\":\"hello\"}")
+            );
+            assert_eq!(
+                take_sse_event(&mut buffer, true).as_deref(),
+                Some("data: [DONE]")
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_event_delimiter_split_across_chunks() {
+        let mut buffer = "data: {\"text\":\"hello\"}\r\n".to_string();
+        assert_eq!(take_sse_event(&mut buffer, false), None);
+        buffer.push_str("\r\n");
+        assert_eq!(
+            take_sse_event(&mut buffer, false).as_deref(),
+            Some("data: {\"text\":\"hello\"}")
+        );
+    }
+
+    #[test]
+    fn parses_gemini_text_response() {
+        assert_eq!(
+            parse_gemini_event(
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}]}}]}"
+            )
+            .unwrap(),
+            vec!["Hello"]
+        );
     }
 }

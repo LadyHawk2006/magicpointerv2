@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use crate::ai_agent::ConversationSession;
 use crate::executor;
@@ -57,13 +57,11 @@ pub fn build_floating_card(
     let title_label = gtk4::Label::new(Some("Magic Pointer"));
     title_label.add_css_class("magic-title");
 
-    let status_label = gtk4::Label::new(Some(
-        if let Some(ref ctx) = captured_context {
-            ctx.as_str()
-        } else {
-            "Thinking..."
-        },
-    ));
+    let status_label = gtk4::Label::new(Some(if let Some(ref ctx) = captured_context {
+        ctx.as_str()
+    } else {
+        "Thinking..."
+    }));
     status_label.add_css_class("magic-status");
     status_label.set_hexpand(true);
     status_label.set_halign(gtk4::Align::Start);
@@ -171,13 +169,8 @@ pub fn build_floating_card(
                     let raw_text = accumulated.borrow().clone();
                     *last_store.borrow_mut() = raw_text.clone();
 
-                    // Convert to pango markup with clean fallback to plain text
                     let pango_text = markdown_to_pango(&raw_text);
-                    if glib::markup_escape_text(&pango_text) == pango_text {
-                        label.set_text(&raw_text);
-                    } else {
-                        label.set_markup(&pango_text);
-                    }
+                    label.set_markup(&pango_text);
 
                     if let Some(status) = status_weak.upgrade() {
                         status.set_text("Streaming...");
@@ -188,6 +181,10 @@ pub fn build_floating_card(
                         let adj = scr.vadjustment();
                         adj.set_value(adj.upper() - adj.page_size());
                     }
+                }
+
+                if accumulated.borrow().is_empty() {
+                    label.set_text("No response received.");
                 }
 
                 if let Some(status) = status_weak.upgrade() {
@@ -295,12 +292,14 @@ pub fn build_floating_card(
         // 3. Dispatch follow-up to Gemini over Tokio session
         let (token_tx, token_rx) = mpsc::channel::<String>(64);
         on_submit_attach(token_rx, ai_label);
+        let error_tx = token_tx.clone();
 
         let session_clone = on_submit_session.clone();
         on_submit_rt.spawn(async move {
             session_clone.add_user_follow_up(&text).await;
             if let Err(e) = session_clone.stream_next_turn(token_tx).await {
                 error!("Error streaming follow up: {}", e);
+                let _ = error_tx.send(format!("[Error: {e}]")).await;
             }
         });
     };
@@ -332,7 +331,7 @@ pub fn build_floating_card(
     window
 }
 
-/// Robust Markdown to Pango markup converter with tag balancing
+/// Convert supported Markdown to valid Pango markup, including while a code fence is streaming.
 fn markdown_to_pango(input: &str) -> String {
     let escaped = glib::markup_escape_text(input);
     let mut out = String::new();
@@ -362,7 +361,12 @@ fn markdown_to_pango(input: &str) -> String {
             if let Some(end) = line_str[start + 2..].find("**") {
                 let actual_end = start + 2 + end;
                 let bold_text = &line_str[start + 2..actual_end];
-                line_str = format!("{}<b>{}</b>{}", &line_str[..start], bold_text, &line_str[actual_end + 2..]);
+                line_str = format!(
+                    "{}<b>{}</b>{}",
+                    &line_str[..start],
+                    bold_text,
+                    &line_str[actual_end + 2..]
+                );
             } else {
                 break;
             }
@@ -373,7 +377,12 @@ fn markdown_to_pango(input: &str) -> String {
             if let Some(end) = line_str[start + 1..].find('`') {
                 let actual_end = start + 1 + end;
                 let code_text = &line_str[start + 1..actual_end];
-                line_str = format!("{}<tt>{}</tt>{}", &line_str[..start], code_text, &line_str[actual_end + 1..]);
+                line_str = format!(
+                    "{}<tt>{}</tt>{}",
+                    &line_str[..start],
+                    code_text,
+                    &line_str[actual_end + 1..]
+                );
             } else {
                 break;
             }
@@ -383,5 +392,30 @@ fn markdown_to_pango(input: &str) -> String {
         out.push('\n');
     }
 
+    if in_code_block {
+        out.push_str("</tt>");
+    }
+
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::markdown_to_pango;
+
+    #[test]
+    fn closes_an_incomplete_streaming_code_fence() {
+        assert_eq!(
+            markdown_to_pango("### Transcription\n\n```text\ncargo check"),
+            "### Transcription\n\n<tt>cargo check\n</tt>"
+        );
+    }
+
+    #[test]
+    fn escapes_markup_inside_code_blocks() {
+        assert_eq!(
+            markdown_to_pango("```\n<widget>\n```"),
+            "<tt>&lt;widget&gt;\n</tt>\n"
+        );
+    }
 }

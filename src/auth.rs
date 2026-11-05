@@ -190,4 +190,3 @@ fn urlencoding(input: &str) -> String {
     }
     encoded
 }
-
