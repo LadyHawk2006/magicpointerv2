@@ -1,5 +1,5 @@
 use crate::keyring_store;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use reqwest::Client;
 use serde::Deserialize;
 use std::env;
@@ -13,7 +13,8 @@ const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
 // Standard Google Cloud Project client credentials (can be overridden via env)
-const DEFAULT_CLIENT_ID: &str = "689012915683-aueabgqe56pa81pu6i54stesq8gf0ejl.apps.googleusercontent.com";
+const DEFAULT_CLIENT_ID: &str =
+    "689012915683-aueabgqe56pa81pu6i54stesq8gf0ejl.apps.googleusercontent.com";
 const DEFAULT_CLIENT_SECRET: &str = "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";
 const OAUTH_SCOPES: &str = "https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/cloud-platform";
 
@@ -33,8 +34,11 @@ pub struct AuthManager {
 
 impl AuthManager {
     pub fn new() -> Self {
-        let client_id = env::var("GOOGLE_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
-        let client_secret = env::var("GOOGLE_CLIENT_SECRET").ok().or_else(|| Some(DEFAULT_CLIENT_SECRET.to_string()));
+        let client_id =
+            env::var("GOOGLE_CLIENT_ID").unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string());
+        let client_secret = env::var("GOOGLE_CLIENT_SECRET")
+            .ok()
+            .or_else(|| Some(DEFAULT_CLIENT_SECRET.to_string()));
 
         Self {
             client: Client::new(),
@@ -52,7 +56,10 @@ impl AuthManager {
             match self.refresh_access_token(&refresh_token).await {
                 Ok(token) => return Ok(token),
                 Err(e) => {
-                    error!("Stored refresh token invalid or expired: {}. Re-authenticating...", e);
+                    error!(
+                        "Stored refresh token invalid or expired: {}. Re-authenticating...",
+                        e
+                    );
                 }
             }
         }
@@ -77,7 +84,8 @@ impl AuthManager {
             params.push(("client_secret", &secret));
         }
 
-        let res = self.client
+        let res = self
+            .client
             .post(GOOGLE_TOKEN_URL)
             .form(&params)
             .send()
@@ -94,8 +102,8 @@ impl AuthManager {
 
     async fn login_via_browser(&self) -> Result<String> {
         // Desktop OAuth apps with Google redirect to http://localhost:<port>/callback
-        let listener = TcpListener::bind("127.0.0.1:8989")
-            .or_else(|_| TcpListener::bind("127.0.0.1:0"))?;
+        let listener =
+            TcpListener::bind("127.0.0.1:8989").or_else(|_| TcpListener::bind("127.0.0.1:0"))?;
         let port = listener.local_addr()?.port();
         let redirect_uri = format!("http://localhost:{}/callback", port);
 
@@ -146,7 +154,8 @@ impl AuthManager {
             params.push(("client_secret", &secret));
         }
 
-        let res = self.client
+        let res = self
+            .client
             .post(GOOGLE_TOKEN_URL)
             .form(&params)
             .send()
@@ -158,7 +167,8 @@ impl AuthManager {
         }
 
         let token_data: TokenResponse = res.json().await?;
-        token_data.refresh_token
+        token_data
+            .refresh_token
             .ok_or_else(|| anyhow!("No refresh token returned by Google (was consent granted?)"))
     }
 }

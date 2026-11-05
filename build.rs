@@ -4,4 +4,3 @@ fn main() {
     println!("cargo:rustc-link-lib=gtk4-layer-shell");
     println!("cargo:rustc-link-arg=-Wl,--as-needed");
 }
-

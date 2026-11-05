@@ -108,14 +108,13 @@ The system operates as a zero-subprocess, high-performance background daemon imp
 
 Hyprland 0.57 uses a Lua configuration at `~/.config/hypr/hyprland.lua`. The GTK application ID is `com.magicpointerv2.tool`; verify the window's reported class with `hyprctl clients` and adjust the class regex if needed.
 
-Add a window rule to the Lua config to float and center the response card, set its initial size, and apply active/inactive opacity:
+Add a window rule to the Lua config to float and center the response card and apply active/inactive opacity. The app supplies its initial size; omit a compositor `size` rule so the window remains interactively resizable:
 
 ```lua
 hl.window_rule({
     match = { class = [[^com\.magicpointerv2\.tool$]] },
     float = true,
     center = true,
-    size = { 520, 460 },
     opacity = "0.96 override 0.90 override",
 })
 ```

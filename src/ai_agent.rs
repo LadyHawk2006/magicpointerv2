@@ -162,20 +162,26 @@ impl ConversationSession {
 
     /// Appends the initial user turn with the captured screenshot
     pub async fn add_user_initial_turn(&self, image: &DynamicImage, prompt: &str) -> Result<()> {
-        let base64_image = encode_image_png_base64(image)?;
-        let turn = json!({
-            "role": "user",
-            "parts": [
-                { "text": prompt },
-                {
-                    "inline_data": {
-                        "mime_type": "image/png",
-                        "data": base64_image
-                    }
+        self.add_user_turn(prompt, std::slice::from_ref(image))
+            .await
+    }
+
+    /// Appends a user turn with zero or more captured images.
+    pub async fn add_user_turn(&self, text: &str, images: &[DynamicImage]) -> Result<()> {
+        let mut parts = vec![json!({ "text": text })];
+        for image in images {
+            parts.push(json!({
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": encode_image_png_base64(image)?
                 }
-            ]
-        });
-        self.contents.lock().await.push(turn);
+            }));
+        }
+
+        self.contents.lock().await.push(json!({
+            "role": "user",
+            "parts": parts
+        }));
         Ok(())
     }
 
@@ -262,12 +268,10 @@ impl ConversationSession {
                     );
                     warn!("Model {} {}", model_name, reason);
                     if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
-                        let _ = token_tx
-                            .send(format!(
-                                "[{} {}; trying {}...]\n\n",
-                                model_name, reason, next_model
-                            ))
-                            .await;
+                        info!(
+                            "Switching from {} to {} after timeout",
+                            model_name, next_model
+                        );
                         continue;
                     }
                     return Err(anyhow!("Model {} {}", model_name, reason));
@@ -278,12 +282,10 @@ impl ConversationSession {
                         model_name, e
                     );
                     if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
-                        let _ = token_tx
-                            .send(format!(
-                                "[{} could not be reached; trying {}...]\n\n",
-                                model_name, next_model
-                            ))
-                            .await;
+                        info!(
+                            "Switching from {} to {} after connection failure",
+                            model_name, next_model
+                        );
                         continue;
                     }
                     return Err(anyhow!("Connection to {} failed: {}", model_name, e));
@@ -312,14 +314,12 @@ impl ConversationSession {
                         429 => "is rate limited",
                         _ => "is overloaded",
                     };
-                    let _ = token_tx
-                        .send(format!(
-                            "[{} {}; trying {}...]\n\n",
-                            model_name,
-                            reason,
-                            MODELS_TO_TRY[i + 1]
-                        ))
-                        .await;
+                    info!(
+                        "Switching from {} to {} because it {}",
+                        model_name,
+                        MODELS_TO_TRY[i + 1],
+                        reason
+                    );
                     continue;
                 }
                 return Err(anyhow!("Gemini API error ({}): {}", model_name, err_text));
@@ -398,17 +398,11 @@ impl ConversationSession {
             if let Some(message) = overload_error {
                 warn!("Model {} {}; moving to fallback", model_name, message);
                 if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
-                    let _ = token_tx
-                        .send(format!(
-                            "\n\n[{} {}; trying {}...]\n\n",
-                            model_name, message, next_model
-                        ))
-                        .await;
                     partial_response.push_str(&full_accumulated);
-                    partial_response.push_str(&format!(
-                        "\n\n[{} {}; trying {}...]\n\n",
-                        model_name, message, next_model
-                    ));
+                    info!(
+                        "Switching from {} to {} after stream failure",
+                        model_name, next_model
+                    );
                     continue;
                 }
 
@@ -423,12 +417,10 @@ impl ConversationSession {
                 let reason = "completed without returning text";
                 if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
                     warn!("Model {} {}; trying {}", model_name, reason, next_model);
-                    let _ = token_tx
-                        .send(format!(
-                            "[{} {}; trying {}...]\n\n",
-                            model_name, reason, next_model
-                        ))
-                        .await;
+                    info!(
+                        "Switching from {} to {} after empty response",
+                        model_name, next_model
+                    );
                     continue;
                 }
                 return Err(anyhow!("Gemini model {} {}", model_name, reason));
@@ -447,7 +439,11 @@ impl ConversationSession {
 
 #[cfg(test)]
 mod tests {
-    use super::{GeminiOverloadedError, parse_gemini_event, sse_event_data, take_sse_event};
+    use super::{
+        ConversationSession, GeminiOverloadedError, parse_gemini_event, sse_event_data,
+        take_sse_event,
+    };
+    use image::DynamicImage;
 
     #[test]
     fn parses_lf_and_crlf_sse_boundaries() {
@@ -498,5 +494,23 @@ mod tests {
         .unwrap_err();
 
         assert!(error.downcast_ref::<GeminiOverloadedError>().is_some());
+    }
+
+    #[tokio::test]
+    async fn user_turn_includes_all_attached_images() {
+        let session = ConversationSession::new();
+        let images = [DynamicImage::new_rgba8(1, 1), DynamicImage::new_rgba8(2, 2)];
+
+        session
+            .add_user_turn("Compare these", &images)
+            .await
+            .unwrap();
+
+        let contents = session.contents.lock().await;
+        let parts = contents[0]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0]["text"], "Compare these");
+        assert_eq!(parts[1]["inline_data"]["mime_type"], "image/png");
+        assert_eq!(parts[2]["inline_data"]["mime_type"], "image/png");
     }
 }

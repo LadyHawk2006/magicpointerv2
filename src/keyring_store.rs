@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::process::Command;
 use tracing::{debug, info};
 
@@ -46,7 +46,9 @@ pub fn store_refresh_token(token: &str) -> Result<()> {
         info!("Saved Google OAuth refresh token securely in system keyring");
         Ok(())
     } else {
-        Err(anyhow!("Failed to store credentials in system keyring via secret-tool"))
+        Err(anyhow!(
+            "Failed to store credentials in system keyring via secret-tool"
+        ))
     }
 }
 

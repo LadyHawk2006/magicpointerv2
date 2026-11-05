@@ -111,7 +111,9 @@ where
     gesture_drag.connect_drag_update(move |_gesture, offset_x, offset_y| {
         let update_opt = {
             let state = state_update.borrow();
-            state.map(|(start_x, start_y, _, _)| (start_x, start_y, start_x + offset_x, start_y + offset_y))
+            state.map(|(start_x, start_y, _, _)| {
+                (start_x, start_y, start_x + offset_x, start_y + offset_y)
+            })
         };
         if let Some(new_state) = update_opt {
             *state_update.borrow_mut() = Some(new_state);
@@ -128,7 +130,9 @@ where
     gesture_drag.connect_drag_end(move |_, offset_x, offset_y| {
         let finish_opt = {
             let state = state_end.borrow();
-            state.map(|(start_x, start_y, _, _)| (start_x, start_y, start_x + offset_x, start_y + offset_y))
+            state.map(|(start_x, start_y, _, _)| {
+                (start_x, start_y, start_x + offset_x, start_y + offset_y)
+            })
         };
 
         if let Some((start_x, start_y, end_x, end_y)) = finish_opt {

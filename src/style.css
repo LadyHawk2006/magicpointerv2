@@ -9,19 +9,18 @@ window.background.card-window {
 }
 
 .magic-card {
-    min-width: 500px;
-    min-height: 360px;
-    background-color: #11151d;
+    background-color: #10141d;
     border: 1px solid #30394a;
     border-radius: 20px;
     padding: 18px;
+    box-shadow: 0 18px 56px alpha(#000000, 0.48);
 }
 
 .magic-header {
     min-height: 32px;
-    border-bottom: 1px solid #283142;
-    padding-bottom: 12px;
-    margin-bottom: 14px;
+    border-bottom: 1px solid #293345;
+    padding-bottom: 13px;
+    margin-bottom: 12px;
 }
 
 .magic-header image {
@@ -30,15 +29,15 @@ window.background.card-window {
 }
 
 .magic-title {
-    color: #f0f4fc;
+    color: #f4f6fb;
     font-weight: 700;
     font-size: 14px;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.35px;
 }
 
 .magic-status {
-    color: #a7bddf;
-    background-color: #1d2b40;
+    color: #b6c8e8;
+    background-color: #1a2638;
     border-radius: 999px;
     padding: 4px 9px;
     font-size: 11px;
@@ -51,15 +50,15 @@ window.background.card-window {
 }
 
 .chat-messages {
-    padding: 4px 6px 12px 2px;
+    padding: 6px 7px 14px 2px;
 }
 
 .selection-notice {
-    background-color: #182232;
-    border: 1px solid #2d405d;
+    background-color: #151f2d;
+    border: 1px solid #293c56;
     border-radius: 14px;
     padding: 12px 14px;
-    margin: 4px 0 12px;
+    margin: 4px 0 14px;
 }
 
 .selection-notice-icon {
@@ -68,30 +67,30 @@ window.background.card-window {
 }
 
 .selection-notice-label {
-    color: #c7d4e8;
+    color: #c5d2e7;
     font-size: 13px;
 }
 
 .chat-bubble-user {
-    background-color: #263a59;
-    border: 1px solid #385680;
-    border-radius: 16px 16px 5px 16px;
+    background-image: linear-gradient(135deg, #324c76, #263c60);
+    border: 1px solid #45638f;
+    border-radius: 17px 17px 5px 17px;
     padding: 11px 15px;
-    margin: 6px 0 8px 48px;
+    margin: 8px 0 12px;
 }
 
 .chat-bubble-user label,
 .chat-message-text {
-    color: #edf3ff;
+    color: #f1f5ff;
     font-size: 14px;
 }
 
 .chat-bubble-ai {
-    background-color: #1a202b;
-    border: 1px solid #2b3545;
-    border-radius: 16px 16px 16px 5px;
-    padding: 15px 17px;
-    margin: 6px 28px 10px 0;
+    background-color: #171d28;
+    border: 1px solid #283345;
+    border-radius: 5px 17px 17px 17px;
+    padding: 17px 18px;
+    margin: 4px 0 16px;
 }
 
 .markdown-content {
@@ -99,25 +98,25 @@ window.background.card-window {
 }
 
 .markdown-paragraph {
-    color: #dce3ee;
+    color: #d9e1ee;
     font-size: 14px;
-    margin: 0 0 9px;
+    margin: 1px 0 11px;
 }
 
 .markdown-heading {
-    color: #f4f7fc;
+    color: #f2f5fc;
     font-weight: 700;
-    margin: 10px 0 6px;
+    margin: 13px 0 7px;
 }
 
 .markdown-h1 {
-    color: #b6ceff;
-    font-size: 21px;
+    color: #b9d1ff;
+    font-size: 23px;
 }
 
 .markdown-h2 {
-    color: #b6ceff;
-    font-size: 18px;
+    color: #b9d1ff;
+    font-size: 19px;
 }
 
 .markdown-h3 {
@@ -130,30 +129,75 @@ window.background.card-window {
     font-size: 14px;
 }
 
-.markdown-code {
-    background-color: #0c1017;
-    border: 1px solid #303a4b;
-    border-radius: 10px;
-    color: #c9dcff;
+.code-card {
+    background-color: #0d121a;
+    border: 1px solid #303b4d;
+    border-radius: 12px;
+    margin: 7px 0 14px;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.code-card:hover {
+    background-color: #101722;
+    border-color: #516582;
+}
+
+.code-toolbar {
+    min-height: 34px;
+    background-color: #151c27;
+    border-bottom: 1px solid #283345;
+    border-radius: 11px 11px 0 0;
+    padding: 2px 6px 2px 12px;
+}
+
+.code-language {
+    color: #91a5c1;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+.code-copy-btn {
+    background: transparent;
+    color: #aebbd0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 5px 7px;
+    opacity: 0.55;
+    transition: opacity 150ms ease, background-color 150ms ease;
+}
+
+.code-card:hover .code-copy-btn,
+.code-copy-btn:focus {
+    opacity: 1;
+}
+
+.code-copy-btn:hover {
+    background-color: #273448;
+    border-color: #3a4b64;
+    color: #eff5ff;
+}
+
+.code-block-source {
+    color: #d5deed;
     font-family: monospace;
     font-size: 12px;
-    padding: 12px 14px;
-    margin: 5px 0 11px;
+    padding: 12px 14px 14px;
 }
 
 .markdown-list-item {
-    color: #dce3ee;
+    color: #d9e1ee;
     font-size: 14px;
-    margin: 3px 0;
+    margin: 4px 0;
 }
 
 .markdown-blockquote {
-    color: #b8c5d8;
-    background-color: #202a39;
+    color: #bdcbe0;
+    background-color: #1b2533;
     border-left: 3px solid #83aaff;
-    border-radius: 0 9px 9px 0;
-    padding: 9px 12px;
-    margin: 6px 0 10px;
+    border-radius: 0 10px 10px 0;
+    padding: 10px 13px;
+    margin: 8px 0 12px;
 }
 
 .markdown-rule {
@@ -163,15 +207,58 @@ window.background.card-window {
 }
 
 .chat-input-bar {
-    border-top: 1px solid #283142;
-    padding-top: 12px;
+    border-top: 1px solid #293345;
+    padding-top: 13px;
     margin-top: 10px;
 }
 
-.chat-entry {
-    min-height: 40px;
-    background-color: #1a202b;
+.prompt-presets {
+    margin-top: 8px;
+}
+
+.prompt-preset-btn {
+    min-height: 32px;
+    background-color: #1b2534;
+    color: #c5d5ef;
+    border: 1px solid #30415b;
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.prompt-preset-btn:hover {
+    background-color: #263a59;
+    border-color: #5273a5;
+    color: #f0f4fc;
+}
+
+.attachment-row {
+    padding: 8px 4px 0;
+}
+
+.attachment-status,
+.message-attachment {
+    color: #a7bddf;
+    font-size: 11px;
+}
+
+.capture-btn {
+    background-color: #202a39;
+    color: #c7d7f0;
+    font-size: 13px;
     border: 1px solid #354052;
+    border-radius: 12px;
+    padding: 8px 12px;
+}
+
+.capture-btn:hover {
+    background-color: #2b3a51;
+}
+
+.chat-entry {
+    background-color: #171d28;
+    border: 1px solid #354258;
     border-radius: 14px;
     padding: 8px 13px;
     color: #f0f4fc;
@@ -180,7 +267,8 @@ window.background.card-window {
 }
 
 .chat-entry:focus {
-    border-color: #7197e5;
+    border-color: #789ce9;
+    box-shadow: 0 0 0 2px alpha(#789ce9, 0.16);
 }
 
 .chat-send-btn {
