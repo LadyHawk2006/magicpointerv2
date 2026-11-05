@@ -1,12 +1,11 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, Ordering};
 
 use crate::ai_agent::ConversationSession;
 use crate::executor;
 use gtk4::gdk;
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::sync::mpsc;
@@ -14,40 +13,22 @@ use tracing::error;
 
 pub fn build_floating_card(
     app: &gtk4::Application,
-    cursor_x: i32,
-    cursor_y: i32,
     captured_context: Option<String>,
     initial_token_rx: mpsc::Receiver<String>,
     session: ConversationSession,
     tokio_rt: Arc<tokio::runtime::Runtime>,
 ) -> gtk4::ApplicationWindow {
     let window = gtk4::ApplicationWindow::new(app);
-
-    window.init_layer_shell();
-    window.set_layer(Layer::Overlay);
-    window.set_keyboard_mode(KeyboardMode::OnDemand);
-    window.set_exclusive_zone(-1);
-
-    window.set_anchor(Edge::Top, true);
-    window.set_anchor(Edge::Left, true);
-
-    let current_x = Arc::new(AtomicI32::new((cursor_x + 16).max(10)));
-    let current_y = Arc::new(AtomicI32::new((cursor_y + 16).max(10)));
-    let current_width = Arc::new(AtomicI32::new(420));
-    let current_height = Arc::new(AtomicI32::new(320));
-
-    window.set_margin(Edge::Left, current_x.load(Ordering::Relaxed));
-    window.set_margin(Edge::Top, current_y.load(Ordering::Relaxed));
+    window.set_title(Some("Magic Pointer"));
+    window.set_default_size(520, 460);
 
     window.add_css_class("card-window");
 
     // Outer card
     let card = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     card.add_css_class("magic-card");
-    card.set_size_request(
-        current_width.load(Ordering::Relaxed),
-        current_height.load(Ordering::Relaxed),
-    );
+    card.set_hexpand(true);
+    card.set_vexpand(true);
 
     // Header container (Acts as a Drag Handle)
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -86,38 +67,6 @@ pub fn build_floating_card(
     header.append(&close_btn);
     card.append(&header);
 
-    // --- Drag Handle Logic for Moving Card ---
-    let drag_gesture = gtk4::GestureDrag::new();
-    let win_weak_drag = window.downgrade();
-    let drag_start_x = Rc::new(RefCell::new(0));
-    let drag_start_y = Rc::new(RefCell::new(0));
-    let pos_x = current_x.clone();
-    let pos_y = current_y.clone();
-
-    let sx = drag_start_x.clone();
-    let sy = drag_start_y.clone();
-    let px = pos_x.clone();
-    let py = pos_y.clone();
-    drag_gesture.connect_drag_begin(move |_, _, _| {
-        *sx.borrow_mut() = px.load(Ordering::Relaxed);
-        *sy.borrow_mut() = py.load(Ordering::Relaxed);
-    });
-
-    let sx2 = drag_start_x.clone();
-    let sy2 = drag_start_y.clone();
-    drag_gesture.connect_drag_update(move |_gesture, offset_x, offset_y| {
-        let new_x = *sx2.borrow() + offset_x.round() as i32;
-        let new_y = *sy2.borrow() + offset_y.round() as i32;
-        pos_x.store(new_x, Ordering::Relaxed);
-        pos_y.store(new_y, Ordering::Relaxed);
-
-        if let Some(win) = win_weak_drag.upgrade() {
-            win.set_margin(Edge::Left, new_x.max(0));
-            win.set_margin(Edge::Top, new_y.max(0));
-        }
-    });
-    header.add_controller(drag_gesture);
-
     // --- Chat Thread View ---
     let scrolled = gtk4::ScrolledWindow::new();
     scrolled.set_vexpand(true);
@@ -132,12 +81,14 @@ pub fn build_floating_card(
     let initial_bubble = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     initial_bubble.add_css_class("chat-bubble-ai");
 
-    let initial_ai_label = gtk4::Label::new(Some("Analyzing screen capture..."));
-    initial_ai_label.set_wrap(true);
-    initial_ai_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-    initial_ai_label.set_selectable(true);
-    initial_ai_label.set_xalign(0.0);
-    initial_bubble.append(&initial_ai_label);
+    let initial_response = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    initial_response.add_css_class("markdown-content");
+    let placeholder = gtk4::Label::new(Some("Analyzing screen capture..."));
+    placeholder.add_css_class("markdown-paragraph");
+    placeholder.set_wrap(true);
+    placeholder.set_xalign(0.0);
+    initial_response.append(&placeholder);
+    initial_bubble.append(&initial_response);
     messages_box.append(&initial_bubble);
 
     let last_ai_text = Rc::new(RefCell::new(String::new()));
@@ -157,11 +108,12 @@ pub fn build_floating_card(
         let scrolled_weak = scrolled.downgrade();
         let last_ai_store = last_ai_text.clone();
 
-        move |mut rx: mpsc::Receiver<String>, label: gtk4::Label| {
+        move |mut rx: mpsc::Receiver<String>, response: gtk4::Box| {
             let status_weak = status_weak.clone();
             let scrolled_weak = scrolled_weak.clone();
             let accumulated = Rc::new(RefCell::new(String::new()));
             let last_store = last_ai_store.clone();
+            let response = response.clone();
 
             glib::spawn_future_local(async move {
                 while let Some(token) = rx.recv().await {
@@ -169,8 +121,7 @@ pub fn build_floating_card(
                     let raw_text = accumulated.borrow().clone();
                     *last_store.borrow_mut() = raw_text.clone();
 
-                    let pango_text = markdown_to_pango(&raw_text);
-                    label.set_markup(&pango_text);
+                    render_markdown(&response, &raw_text);
 
                     if let Some(status) = status_weak.upgrade() {
                         status.set_text("Streaming...");
@@ -184,7 +135,7 @@ pub fn build_floating_card(
                 }
 
                 if accumulated.borrow().is_empty() {
-                    label.set_text("No response received.");
+                    render_markdown(&response, "No response received.");
                 }
 
                 if let Some(status) = status_weak.upgrade() {
@@ -195,7 +146,7 @@ pub fn build_floating_card(
     };
 
     // Connect initial screenshot turn stream
-    attach_streaming_receiver(initial_token_rx, initial_ai_label);
+    attach_streaming_receiver(initial_token_rx, initial_response);
 
     // --- Interactive Chat Input Bar + Resize Corner ---
     let bottom_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -209,43 +160,8 @@ pub fn build_floating_card(
     let send_btn = gtk4::Button::with_label("Send");
     send_btn.add_css_class("chat-send-btn");
 
-    // Bottom-right resize handle
-    let resize_handle = gtk4::Image::from_icon_name("view-fullscreen-symbolic");
-    resize_handle.add_css_class("resize-handle");
-    resize_handle.set_tooltip_text(Some("Drag to resize window"));
-
-    // --- Resize Drag Logic ---
-    let resize_gesture = gtk4::GestureDrag::new();
-    let card_clone = card.clone();
-    let w_store = current_width.clone();
-    let h_store = current_height.clone();
-    let start_w = Rc::new(RefCell::new(0));
-    let start_h = Rc::new(RefCell::new(0));
-
-    let sw = start_w.clone();
-    let sh = start_h.clone();
-    let w_val = w_store.clone();
-    let h_val = h_store.clone();
-    resize_gesture.connect_drag_begin(move |_, _, _| {
-        *sw.borrow_mut() = w_val.load(Ordering::Relaxed);
-        *sh.borrow_mut() = h_val.load(Ordering::Relaxed);
-    });
-
-    let sw2 = start_w.clone();
-    let sh2 = start_h.clone();
-    resize_gesture.connect_drag_update(move |_gesture, offset_x, offset_y| {
-        let new_w = (*sw2.borrow() + offset_x.round() as i32).max(340);
-        let new_h = (*sh2.borrow() + offset_y.round() as i32).max(240);
-        w_store.store(new_w, Ordering::Relaxed);
-        h_store.store(new_h, Ordering::Relaxed);
-
-        card_clone.set_size_request(new_w, new_h);
-    });
-    resize_handle.add_controller(resize_gesture);
-
     bottom_row.append(&entry);
     bottom_row.append(&send_btn);
-    bottom_row.append(&resize_handle);
     card.append(&bottom_row);
 
     window.set_child(Some(&card));
@@ -281,17 +197,14 @@ pub fn build_floating_card(
         let ai_bubble = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         ai_bubble.add_css_class("chat-bubble-ai");
 
-        let ai_label = gtk4::Label::new(Some("..."));
-        ai_label.set_wrap(true);
-        ai_label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-        ai_label.set_selectable(true);
-        ai_label.set_xalign(0.0);
-        ai_bubble.append(&ai_label);
+        let ai_response = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+        ai_response.add_css_class("markdown-content");
+        ai_bubble.append(&ai_response);
         on_submit_msg_box.append(&ai_bubble);
 
         // 3. Dispatch follow-up to Gemini over Tokio session
         let (token_tx, token_rx) = mpsc::channel::<String>(64);
-        on_submit_attach(token_rx, ai_label);
+        on_submit_attach(token_rx, ai_response);
         let error_tx = token_tx.clone();
 
         let session_clone = on_submit_session.clone();
@@ -331,91 +244,178 @@ pub fn build_floating_card(
     window
 }
 
-/// Convert supported Markdown to valid Pango markup, including while a code fence is streaming.
-fn markdown_to_pango(input: &str) -> String {
-    let escaped = glib::markup_escape_text(input);
-    let mut out = String::new();
-
-    let mut in_code_block = false;
-    for line in escaped.lines() {
-        if line.starts_with("```") {
-            in_code_block = !in_code_block;
-            if in_code_block {
-                out.push_str("<tt>");
-            } else {
-                out.push_str("</tt>\n");
-            }
-            continue;
-        }
-
-        if in_code_block {
-            out.push_str(line);
-            out.push('\n');
-            continue;
-        }
-
-        let mut line_str = line.to_string();
-
-        // Bold: **text**
-        while let Some(start) = line_str.find("**") {
-            if let Some(end) = line_str[start + 2..].find("**") {
-                let actual_end = start + 2 + end;
-                let bold_text = &line_str[start + 2..actual_end];
-                line_str = format!(
-                    "{}<b>{}</b>{}",
-                    &line_str[..start],
-                    bold_text,
-                    &line_str[actual_end + 2..]
-                );
-            } else {
-                break;
-            }
-        }
-
-        // Inline code: `text`
-        while let Some(start) = line_str.find('`') {
-            if let Some(end) = line_str[start + 1..].find('`') {
-                let actual_end = start + 1 + end;
-                let code_text = &line_str[start + 1..actual_end];
-                line_str = format!(
-                    "{}<tt>{}</tt>{}",
-                    &line_str[..start],
-                    code_text,
-                    &line_str[actual_end + 1..]
-                );
-            } else {
-                break;
-            }
-        }
-
-        out.push_str(&line_str);
-        out.push('\n');
+fn render_markdown(container: &gtk4::Box, markdown: &str) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
     }
 
-    if in_code_block {
-        out.push_str("</tt>");
+    let mut class = "markdown-paragraph".to_string();
+    let mut content = String::new();
+    let mut is_code_block = false;
+    let mut quote_depth = 0usize;
+    let mut inline_tags = Vec::new();
+    let mut list_depth = 0usize;
+
+    let flush = |container: &gtk4::Box, class: &str, content: &mut String, is_code_block: bool| {
+        if content.is_empty() {
+            return;
+        }
+
+        let label = gtk4::Label::new(None);
+        label.add_css_class(class);
+        label.set_wrap(true);
+        label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+        label.set_selectable(true);
+        label.set_xalign(0.0);
+        if is_code_block {
+            label.set_text(content);
+        } else {
+            label.set_markup(content);
+        }
+        container.append(&label);
+        content.clear();
+    };
+
+    for event in Parser::new_ext(markdown, Options::all()) {
+        match event {
+            Event::Start(Tag::Paragraph) => {
+                if content.is_empty() {
+                    class = if quote_depth > 0 {
+                        "markdown-blockquote".to_string()
+                    } else {
+                        "markdown-paragraph".to_string()
+                    };
+                }
+            }
+            Event::End(TagEnd::Paragraph) => {
+                flush(container, &class, &mut content, is_code_block);
+            }
+            Event::Start(Tag::Heading { level, .. }) => {
+                flush(container, &class, &mut content, is_code_block);
+                class = format!("markdown-heading markdown-h{}", level as u8);
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                flush(container, &class, &mut content, false);
+            }
+            Event::Start(Tag::CodeBlock(_)) => {
+                flush(container, &class, &mut content, is_code_block);
+                class = "markdown-code".to_string();
+                is_code_block = true;
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                flush(container, &class, &mut content, true);
+                is_code_block = false;
+            }
+            Event::Start(Tag::BlockQuote(_)) => quote_depth += 1,
+            Event::End(TagEnd::BlockQuote(_)) => {
+                quote_depth = quote_depth.saturating_sub(1);
+            }
+            Event::Start(Tag::List(_)) => list_depth += 1,
+            Event::End(TagEnd::List(_)) => list_depth = list_depth.saturating_sub(1),
+            Event::Start(Tag::Item) => {
+                flush(container, &class, &mut content, is_code_block);
+                class = "markdown-list-item".to_string();
+                content.push_str(&format!("{}• ", "  ".repeat(list_depth.saturating_sub(1))));
+            }
+            Event::End(TagEnd::Item) => {
+                flush(container, &class, &mut content, false);
+            }
+            Event::Start(Tag::Emphasis) => {
+                content.push_str("<i>");
+                inline_tags.push("</i>");
+            }
+            Event::Start(Tag::Strong) => {
+                content.push_str("<b>");
+                inline_tags.push("</b>");
+            }
+            Event::Start(Tag::Strikethrough) => {
+                content.push_str("<s>");
+                inline_tags.push("</s>");
+            }
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                content.push_str("<a href=\"");
+                content.push_str(&glib::markup_escape_text(&dest_url));
+                content.push_str("\">");
+                inline_tags.push("</a>");
+            }
+            Event::End(
+                TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link,
+            ) => {
+                if let Some(tag) = inline_tags.pop() {
+                    content.push_str(tag);
+                }
+            }
+            Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
+                if is_code_block {
+                    content.push_str(&text);
+                } else {
+                    content.push_str(&glib::markup_escape_text(&text));
+                }
+            }
+            Event::Code(code) => {
+                content.push_str("<tt>");
+                content.push_str(&glib::markup_escape_text(&code));
+                content.push_str("</tt>");
+            }
+            Event::SoftBreak => content.push(' '),
+            Event::HardBreak => content.push('\n'),
+            Event::Rule => {
+                flush(container, &class, &mut content, is_code_block);
+                let rule = gtk4::Label::new(Some(" "));
+                rule.add_css_class("markdown-rule");
+                container.append(&rule);
+            }
+            Event::TaskListMarker(checked) => {
+                content.push_str(if checked { "[x] " } else { "[ ] " });
+            }
+            Event::FootnoteReference(label) => {
+                content.push_str(&glib::markup_escape_text(&format!("[^{label}]")));
+            }
+            Event::DisplayMath(math) | Event::InlineMath(math) => {
+                content.push_str(&glib::markup_escape_text(&math));
+            }
+            Event::Start(_) | Event::End(_) => {}
+        }
     }
 
-    out
+    flush(container, &class, &mut content, is_code_block);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::markdown_to_pango;
+    use super::{Event, Options, Parser, Tag};
 
     #[test]
-    fn closes_an_incomplete_streaming_code_fence() {
-        assert_eq!(
-            markdown_to_pango("### Transcription\n\n```text\ncargo check"),
-            "### Transcription\n\n<tt>cargo check\n</tt>"
+    fn pulldown_cmark_recognizes_markdown_structures() {
+        let events: Vec<_> = Parser::new_ext(
+            "## Heading\n\nA **bold** phrase and `code`.\n\n```rust\nfn main() {}\n```",
+            Options::all(),
+        )
+        .collect();
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Start(Tag::Heading { .. })))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Start(Tag::Strong)))
+        );
+        assert!(events.iter().any(|event| matches!(event, Event::Code(_))));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Start(Tag::CodeBlock(_))))
         );
     }
 
     #[test]
-    fn escapes_markup_inside_code_blocks() {
-        assert_eq!(
-            markdown_to_pango("```\n<widget>\n```"),
-            "<tt>&lt;widget&gt;\n</tt>\n"
-        );
+    fn escapes_html_in_markdown_as_text() {
+        let events: Vec<_> = Parser::new_ext("<widget>", Options::all()).collect();
+        assert!(events.iter().any(|event| {
+            matches!(event, Event::Html(text) | Event::InlineHtml(text) if text.as_ref() == "<widget>")
+        }));
     }
 }

@@ -67,13 +67,8 @@ fn main() {
                             s.active_window.map(|w| format!("{} ({})", w.class, w.title))
                         });
 
-                        let card_x = rect.x + (rect.width as i32 / 2);
-                        let card_y = rect.y + rect.height as i32;
-
                         let card_window = ui::build_floating_card(
                             &app_handle,
-                            card_x,
-                            card_y,
                             context_label,
                             token_rx,
                             session.clone(),
