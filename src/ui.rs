@@ -22,7 +22,7 @@ pub fn build_floating_card(
 ) -> gtk4::ApplicationWindow {
     let window = gtk4::ApplicationWindow::new(app);
     window.set_title(Some("Magic Pointer"));
-    window.set_default_size(520, 460);
+    window.set_default_size(560, 600);
 
     window.add_css_class("card-window");
 
@@ -33,10 +33,11 @@ pub fn build_floating_card(
     card.set_vexpand(true);
 
     // Header container (Acts as a Drag Handle)
-    let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
     header.add_css_class("magic-header");
 
     let title_icon = gtk4::Image::from_icon_name("sparkles-symbolic");
+    title_icon.add_css_class("brand-icon");
     let title_label = gtk4::Label::new(Some("Magic Pointer"));
     title_label.add_css_class("magic-title");
 
@@ -46,11 +47,11 @@ pub fn build_floating_card(
     status_label.set_halign(gtk4::Align::Start);
 
     let copy_btn = gtk4::Button::from_icon_name("edit-copy-symbolic");
-    copy_btn.add_css_class("magic-btn-close");
+    copy_btn.add_css_class("header-action");
     copy_btn.set_tooltip_text(Some("Copy last response"));
 
     let close_btn = gtk4::Button::from_icon_name("window-close-symbolic");
-    close_btn.add_css_class("magic-btn-close");
+    close_btn.add_css_class("header-action");
     let win_weak_close = window.downgrade();
     close_btn.connect_clicked(move |_| {
         if let Some(win) = win_weak_close.upgrade() {
@@ -84,16 +85,23 @@ pub fn build_floating_card(
     selection_notice.add_css_class("selection-notice");
     let selection_icon = gtk4::Image::from_icon_name("image-x-generic-symbolic");
     selection_icon.add_css_class("selection-notice-icon");
+    let selection_copy = gtk4::Box::new(gtk4::Orientation::Vertical, 3);
+    selection_copy.set_hexpand(true);
+    let selection_title = gtk4::Label::new(Some("Your screen, ready to explore"));
+    selection_title.add_css_class("selection-notice-title");
+    selection_title.set_xalign(0.0);
     let selection_message = match captured_context.as_deref() {
-        Some(context) => format!("Capture ready from {context}. Ask a question to get started."),
-        None => "Screenshot attached. Ask a question to get started.".to_string(),
+        Some(context) => format!("Captured from {context}"),
+        None => "Ask about anything in the captured area.".to_string(),
     };
     let selection_label = gtk4::Label::new(Some(&selection_message));
     selection_label.add_css_class("selection-notice-label");
     selection_label.set_wrap(true);
     selection_label.set_xalign(0.0);
     selection_notice.append(&selection_icon);
-    selection_notice.append(&selection_label);
+    selection_copy.append(&selection_title);
+    selection_copy.append(&selection_label);
+    selection_notice.append(&selection_copy);
     messages_box.append(&selection_notice);
 
     let last_ai_text = Rc::new(RefCell::new(String::new()));
@@ -165,7 +173,20 @@ pub fn build_floating_card(
     };
 
     // --- Interactive Chat Input Bar + Resize Corner ---
-    let bottom_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let composer = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
+    composer.add_css_class("chat-composer");
+
+    let attachment_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    attachment_row.add_css_class("attachment-row");
+    let attachment_previews = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    attachment_previews.add_css_class("attachment-previews");
+    let attachment_status = gtk4::Label::new(Some("1 capture"));
+    attachment_status.add_css_class("attachment-status");
+    attachment_row.append(&attachment_previews);
+    attachment_row.append(&attachment_status);
+    refresh_attachment_previews(&attachment_previews, &pending_images.borrow());
+
+    let bottom_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 9);
     bottom_row.add_css_class("chat-input-bar");
 
     let entry = gtk4::Entry::new();
@@ -183,52 +204,60 @@ pub fn build_floating_card(
     let prompt_presets = [
         (
             "Explain error",
+            "dialog-warning-symbolic",
             "Explain the error visible in the attached capture, identify the likely cause, and suggest practical steps to fix it. If no error is visible, say so.",
         ),
         (
             "Summarize",
+            "view-list-symbolic",
             "Summarize the selected content concisely. Highlight only the most important points.",
         ),
         (
             "Extract text",
+            "edit-find-symbolic",
             "Transcribe all legible text from the attached capture, preserving its structure where practical. Mark anything uncertain.",
         ),
         (
             "Describe UI",
+            "applications-graphics-symbolic",
             "Describe the visible interface, explain the purpose of its important elements, and suggest useful next steps.",
         ),
         (
             "Translate",
+            "preferences-desktop-locale-symbolic",
             "Translate the visible text into English. Preserve the original meaning and briefly identify the source language if possible.",
         ),
     ];
     let mut preset_buttons = Vec::with_capacity(prompt_presets.len());
-    for (index, (label, prompt)) in prompt_presets.into_iter().enumerate() {
-        let button = gtk4::Button::with_label(label);
+    for (index, (label, icon, prompt)) in prompt_presets.into_iter().enumerate() {
+        let button = gtk4::Button::new();
         button.add_css_class("prompt-preset-btn");
+        let content = gtk4::Box::new(gtk4::Orientation::Horizontal, 7);
+        let image = gtk4::Image::from_icon_name(icon);
+        image.add_css_class("preset-icon");
+        let title = gtk4::Label::new(Some(label));
+        content.append(&image);
+        content.append(&title);
+        button.set_child(Some(&content));
         preset_grid.attach(&button, (index % 3) as i32, (index / 3) as i32, 1, 1);
         preset_buttons.push((button, prompt));
     }
 
-    let capture_btn = gtk4::Button::with_label("Capture");
-    capture_btn.add_css_class("capture-btn");
+    let capture_btn = gtk4::Button::from_icon_name("list-add-symbolic");
+    capture_btn.add_css_class("capture-image-btn");
+    capture_btn.set_tooltip_text(Some("Capture another image"));
 
-    let send_btn = gtk4::Button::with_label("Send");
+    let send_btn = gtk4::Button::from_icon_name("go-up-symbolic");
     send_btn.add_css_class("chat-send-btn");
-
-    let attachment_status = gtk4::Label::new(Some("1 image attached"));
-    attachment_status.add_css_class("attachment-status");
-
-    let attachment_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-    attachment_row.add_css_class("attachment-row");
-    attachment_row.append(&attachment_status);
-    card.append(&attachment_row);
+    send_btn.set_tooltip_text(Some("Send message"));
     card.append(&preset_grid);
 
-    bottom_row.append(&entry);
     bottom_row.append(&capture_btn);
+    bottom_row.append(&entry);
     bottom_row.append(&send_btn);
-    card.append(&bottom_row);
+    composer.append(&attachment_row);
+    composer.append(&bottom_row);
+    card.append(&composer);
 
     window.set_child(Some(&card));
 
@@ -236,6 +265,8 @@ pub fn build_floating_card(
     let capture_pending_images = pending_images.clone();
     let capture_status = status_label.downgrade();
     let capture_attachment_status = attachment_status.clone();
+    let capture_attachment_previews = attachment_previews.clone();
+    let capture_attachment_row = attachment_row.clone();
     capture_btn.connect_clicked(move |_| {
         if let Some(status) = capture_status.upgrade() {
             status.set_text("Select a region...");
@@ -245,6 +276,8 @@ pub fn build_floating_card(
         let status_weak = capture_status.clone();
         let dismiss_status = capture_status.clone();
         let attachment_status = capture_attachment_status.clone();
+        let attachment_previews = capture_attachment_previews.clone();
+        let attachment_row = capture_attachment_row.clone();
         selection_overlay::show_selection_overlay(
             &capture_app,
             move |rect: Rect| match screencapture::capture_screen_region(
@@ -257,11 +290,13 @@ pub fn build_floating_card(
                     let mut images = pending_images.borrow_mut();
                     images.push(image);
                     let count = images.len();
+                    attachment_row.set_visible(true);
                     attachment_status.set_text(&format!(
-                        "{} image{} attached",
+                        "{} capture{}",
                         count,
                         if count == 1 { "" } else { "s" }
                     ));
+                    refresh_attachment_previews(&attachment_previews, &images);
                     if let Some(status) = status_weak.upgrade() {
                         status.set_text("Capture attached");
                     }
@@ -291,6 +326,9 @@ pub fn build_floating_card(
     let status_weak = status_label.downgrade();
     let scrolled_weak = scrolled.downgrade();
     let preset_grid_submit = preset_grid.clone();
+    let attachment_preview_submit = attachment_previews.clone();
+    let attachment_status_submit = attachment_status.clone();
+    let attachment_row_submit = attachment_row.clone();
 
     let submit_action: Rc<dyn Fn(String)> = Rc::new(move |text: String| {
         if text.trim().is_empty() {
@@ -305,6 +343,14 @@ pub fn build_floating_card(
         user_bubble.add_css_class("chat-bubble-user");
         user_bubble.set_halign(gtk4::Align::End);
 
+        let captured_images = std::mem::take(&mut *on_submit_images.borrow_mut());
+        if !captured_images.is_empty() {
+            let image_previews = gtk4::Box::new(gtk4::Orientation::Horizontal, 7);
+            image_previews.add_css_class("message-image-previews");
+            refresh_attachment_previews(&image_previews, &captured_images);
+            user_bubble.append(&image_previews);
+        }
+
         let user_label = gtk4::Label::new(Some(&text));
         user_label.add_css_class("chat-message-text");
         user_label.set_wrap(true);
@@ -313,16 +359,17 @@ pub fn build_floating_card(
         user_label.set_selectable(true);
         user_label.set_xalign(1.0);
         user_bubble.append(&user_label);
-        let captured_images = std::mem::take(&mut *on_submit_images.borrow_mut());
         if !captured_images.is_empty() {
             let image_count = gtk4::Label::new(Some(&format!(
-                "{} image{} attached",
+                "{} capture{} attached",
                 captured_images.len(),
                 if captured_images.len() == 1 { "" } else { "s" }
             )));
             image_count.add_css_class("message-attachment");
             user_bubble.append(&image_count);
-            attachment_status.set_text("No images attached");
+            attachment_status_submit.set_text("No captures");
+            refresh_attachment_previews(&attachment_preview_submit, &[]);
+            attachment_row_submit.set_visible(false);
         }
         on_submit_msg_box.append(&user_bubble);
 
@@ -394,6 +441,33 @@ pub fn build_floating_card(
     window.add_controller(key_controller);
 
     window
+}
+
+fn refresh_attachment_previews(container: &gtk4::Box, images: &[DynamicImage]) {
+    const PREVIEW_MIN_WIDTH: i32 = 96;
+    const PREVIEW_MIN_HEIGHT: i32 = 72;
+
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+
+    for image in images {
+        let rgba = image.thumbnail(192, 144).to_rgba8();
+        let width = rgba.width();
+        let height = rgba.height();
+        let bytes = glib::Bytes::from_owned(rgba.into_raw());
+        let texture = gdk::MemoryTexture::new(
+            width as i32,
+            height as i32,
+            gdk::MemoryFormat::R8g8b8a8,
+            &bytes,
+            width as usize * 4,
+        );
+        let preview = gtk4::Image::from_paintable(Some(&texture));
+        preview.set_size_request(PREVIEW_MIN_WIDTH, PREVIEW_MIN_HEIGHT);
+        preview.add_css_class("attachment-preview");
+        container.append(&preview);
+    }
 }
 
 fn scroll_to_bottom(scrolled: &gtk4::ScrolledWindow) {

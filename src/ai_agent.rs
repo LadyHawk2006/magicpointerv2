@@ -8,16 +8,19 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::env;
 use std::fmt;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tracing::{info, warn};
 
-pub fn encode_image_png_base64(image: &DynamicImage) -> Result<String> {
-    let mut bytes: Vec<u8> = Vec::new();
-    let mut cursor = Cursor::new(&mut bytes);
-    image.write_to(&mut cursor, image::ImageFormat::Png)?;
+const MAX_IMAGE_DIMENSION: u32 = 2048;
+const JPEG_QUALITY: u8 = 82;
+
+pub fn encode_image_jpeg_base64(image: &DynamicImage) -> Result<String> {
+    let image = image.thumbnail(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION);
+    let mut bytes = Vec::new();
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, JPEG_QUALITY);
+    encoder.encode_image(&image)?;
     Ok(STANDARD.encode(bytes))
 }
 
@@ -172,8 +175,8 @@ impl ConversationSession {
         for image in images {
             parts.push(json!({
                 "inline_data": {
-                    "mime_type": "image/png",
-                    "data": encode_image_png_base64(image)?
+                    "mime_type": "image/jpeg",
+                    "data": encode_image_jpeg_base64(image)?
                 }
             }));
         }
@@ -510,7 +513,23 @@ mod tests {
         let parts = contents[0]["parts"].as_array().unwrap();
         assert_eq!(parts.len(), 3);
         assert_eq!(parts[0]["text"], "Compare these");
-        assert_eq!(parts[1]["inline_data"]["mime_type"], "image/png");
-        assert_eq!(parts[2]["inline_data"]["mime_type"], "image/png");
+        assert_eq!(parts[1]["inline_data"]["mime_type"], "image/jpeg");
+        assert_eq!(parts[2]["inline_data"]["mime_type"], "image/jpeg");
+    }
+
+    #[test]
+    fn image_payload_is_jpeg_and_resized_to_the_maximum_dimension() {
+        use super::{MAX_IMAGE_DIMENSION, encode_image_jpeg_base64};
+        use base64::Engine as _;
+
+        let image = DynamicImage::new_rgb8(MAX_IMAGE_DIMENSION + 100, 100);
+        let encoded = encode_image_jpeg_base64(&image).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        let decoded = image::load_from_memory(&bytes).unwrap();
+
+        assert_eq!(decoded.width(), MAX_IMAGE_DIMENSION);
+        assert!(decoded.height() < 100);
     }
 }

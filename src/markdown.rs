@@ -56,15 +56,11 @@ fn append_code_block(container: &gtk4::Box, code: &str, language: Option<&str>) 
 }
 
 fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
-    const KEYWORD_COLOR: &str = "#c792ea";
-    const STRING_COLOR: &str = "#c3e88d";
-    const COMMENT_COLOR: &str = "#7f8c9f";
-    const NUMBER_COLOR: &str = "#f78c6c";
-
     let hash_comments = language.is_some_and(|language| {
         [
-            "bash", "sh", "shell", "python", "py", "yaml", "yml", "toml", "ruby", "rb", "makefile",
-            "r",
+            "bash", "lua", "sh", "shell", "python", "py", "yaml", "yml", "toml", "ruby", "rb",
+            "makefile", "r", "perl", "pl", "elisp", "lisp", "scheme", "clojure", "nim", "nix",
+            "julia",
         ]
         .contains(&language.to_ascii_lowercase().as_str())
     });
@@ -73,7 +69,7 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
     let mut index = 0;
     while index < chars.len() {
         let start = index;
-        let color = if chars[index] == '/'
+        let style_tag = if chars[index] == '/'
             && chars
                 .get(index + 1)
                 .is_some_and(|next| *next == '/' || *next == '*')
@@ -90,13 +86,13 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
                     index += 1;
                 }
             }
-            Some(COMMENT_COLOR)
+            Some("i")
         } else if hash_comments && chars[index] == '#' {
             index += 1;
             while index < chars.len() && chars[index] != '\n' {
                 index += 1;
             }
-            Some(COMMENT_COLOR)
+            Some("i")
         } else if matches!(chars[index], '"' | '\'' | '`') {
             let quote = chars[index];
             index += 1;
@@ -110,7 +106,7 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
                     index += 1;
                 }
             }
-            Some(STRING_COLOR)
+            Some("u")
         } else if chars[index].is_ascii_digit() {
             index += 1;
             while index < chars.len()
@@ -118,7 +114,7 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
             {
                 index += 1;
             }
-            Some(NUMBER_COLOR)
+            Some("span weight=\"semibold\"")
         } else if chars[index].is_ascii_alphabetic() || chars[index] == '_' {
             index += 1;
             while index < chars.len()
@@ -136,7 +132,7 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
             ]
             .contains(&word.as_str())
             {
-                Some(KEYWORD_COLOR)
+                Some("b")
             } else {
                 None
             }
@@ -147,8 +143,12 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
 
         let token: String = chars[start..index].iter().collect();
         let escaped = glib::markup_escape_text(&token);
-        if let Some(color) = color {
-            markup.push_str(&format!("<span foreground=\"{color}\">{escaped}</span>"));
+        if let Some(style) = style_tag {
+            if style.starts_with("span ") {
+                markup.push_str(&format!("<{style}>{escaped}</span>"));
+            } else {
+                markup.push_str(&format!("<{style}>{escaped}</{style}>"));
+            }
         } else {
             markup.push_str(&escaped);
         }
@@ -278,9 +278,9 @@ pub(crate) fn render_markdown(container: &gtk4::Box, markdown: &str) {
                 }
             }
             Event::Code(code) => {
-                content.push_str("<span foreground=\"#a5d6ff\"><tt>");
+                content.push_str("<tt>");
                 content.push_str(&glib::markup_escape_text(&code));
-                content.push_str("</tt></span>");
+                content.push_str("</tt>");
             }
             Event::SoftBreak => content.push(' '),
             Event::HardBreak => content.push('\n'),
@@ -345,11 +345,11 @@ mod tests {
     }
 
     #[test]
-    fn code_highlighting_escapes_markup_and_colors_tokens() {
+    fn code_highlighting_escapes_markup_and_styles_tokens() {
         let markup = highlight_code_markup("let message = \"<hello>\"; // note", Some("rust"));
-        assert!(markup.contains("foreground=\"#c792ea\""));
-        assert!(markup.contains("foreground=\"#c3e88d\""));
-        assert!(markup.contains("foreground=\"#7f8c9f\""));
+        assert!(markup.contains("<b>let</b>"));
+        assert!(markup.contains("<u>&quot;&lt;hello&gt;&quot;</u>"));
+        assert!(markup.contains("<i>// note</i>"));
         assert!(markup.contains("&lt;hello&gt;"));
     }
 
@@ -357,7 +357,7 @@ mod tests {
     fn hash_comments_are_only_highlighted_for_hash_comment_languages() {
         let rust = highlight_code_markup("let value = #tag;", Some("rust"));
         let python = highlight_code_markup("value = 1 # note", Some("python"));
-        assert!(!rust.contains("foreground=\"#7f8c9f\""));
-        assert!(python.contains("foreground=\"#7f8c9f\""));
+        assert!(!rust.contains("<i>#tag;</i>"));
+        assert!(python.contains("<i># note</i>"));
     }
 }
