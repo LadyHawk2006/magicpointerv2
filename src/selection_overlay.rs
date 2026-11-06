@@ -45,7 +45,6 @@ where
 
     let state_draw = drag_state.clone();
     drawing_area.set_draw_func(move |_, cr, _width, _height| {
-        // Draw dark translucent backdrop
         cr.set_source_rgba(0.0, 0.0, 0.0, 0.28);
         let _ = cr.paint();
 
@@ -56,14 +55,12 @@ where
             let rh = (cy - sy).abs();
 
             if rw > 1.0 && rh > 1.0 {
-                // Clear selected hole to see through
                 cr.save().expect("cairo save");
                 cr.set_operator(cairo::Operator::Clear);
                 cr.rectangle(rx, ry, rw, rh);
                 let _ = cr.fill();
                 cr.restore().expect("cairo restore");
 
-                // Draw sleek glowing selection border
                 cr.set_source_rgba(0.23, 0.51, 0.96, 0.95);
                 cr.set_line_width(2.0);
                 cr.rectangle(rx, ry, rw, rh);

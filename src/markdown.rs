@@ -86,13 +86,15 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
                     index += 1;
                 }
             }
-            Some("i")
+            // Faded overlay text for comments
+            Some("span foreground=\"#a6adc8\" style=\"italic\"")
         } else if hash_comments && chars[index] == '#' {
             index += 1;
             while index < chars.len() && chars[index] != '\n' {
                 index += 1;
             }
-            Some("i")
+            // Faded overlay text for comments
+            Some("span foreground=\"#a6adc8\" style=\"italic\"")
         } else if matches!(chars[index], '"' | '\'' | '`') {
             let quote = chars[index];
             index += 1;
@@ -106,7 +108,8 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
                     index += 1;
                 }
             }
-            Some("u")
+            // Green for strings
+            Some("span foreground=\"#a6e3a1\"")
         } else if chars[index].is_ascii_digit() {
             index += 1;
             while index < chars.len()
@@ -114,7 +117,8 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
             {
                 index += 1;
             }
-            Some("span weight=\"semibold\"")
+            // Peach/Orange for numbers
+            Some("span foreground=\"#fab387\"")
         } else if chars[index].is_ascii_alphabetic() || chars[index] == '_' {
             index += 1;
             while index < chars.len()
@@ -123,16 +127,20 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
                 index += 1;
             }
             let word: String = chars[start..index].iter().collect();
-            if [
+            let keywords = [
                 "as", "async", "await", "break", "const", "continue", "else", "enum", "fn", "for",
                 "function", "if", "impl", "import", "in", "let", "match", "mut", "new", "pub",
                 "return", "self", "static", "struct", "trait", "use", "var", "while", "class",
-                "def", "from", "print", "try", "except", "true", "false", "null", "None", "True",
-                "False",
-            ]
-            .contains(&word.as_str())
-            {
-                Some("b")
+                "def", "from", "print", "try", "except"
+            ];
+            let booleans = ["true", "false", "null", "None", "True", "False"];
+
+            if keywords.contains(&word.as_str()) {
+                // Mauve/Purple for keywords
+                Some("span foreground=\"#cba6f7\" weight=\"bold\"")
+            } else if booleans.contains(&word.as_str()) {
+                // Soft Indigo/Violet for booleans
+                Some("span foreground=\"#818cf8\" weight=\"bold\"")
             } else {
                 None
             }
@@ -240,7 +248,11 @@ pub(crate) fn render_markdown(container: &gtk4::Box, markdown: &str) {
             Event::Start(Tag::Item) => {
                 flush(container, &class, &mut content, is_code_block);
                 class = "markdown-list-item".to_string();
-                content.push_str(&format!("{}• ", "  ".repeat(list_depth.saturating_sub(1))));
+                // Colored bullet points to match your UI accent (#3b82f6)
+                content.push_str(&format!(
+                    "{}<span foreground=\"#3b82f6\">•</span> ",
+                    "  ".repeat(list_depth.saturating_sub(1))
+                ));
             }
             Event::End(TagEnd::Item) => {
                 flush(container, &class, &mut content, false);
@@ -278,9 +290,10 @@ pub(crate) fn render_markdown(container: &gtk4::Box, markdown: &str) {
                 }
             }
             Event::Code(code) => {
-                content.push_str("<tt>");
+                // Soft Indigo/Violet monospace font for inline `code`
+                content.push_str("<tt><span foreground=\"#818cf8\">");
                 content.push_str(&glib::markup_escape_text(&code));
-                content.push_str("</tt>");
+                content.push_str("</span></tt>");
             }
             Event::SoftBreak => content.push(' '),
             Event::HardBreak => content.push('\n'),
@@ -291,7 +304,11 @@ pub(crate) fn render_markdown(container: &gtk4::Box, markdown: &str) {
                 container.append(&rule);
             }
             Event::TaskListMarker(checked) => {
-                content.push_str(if checked { "[x] " } else { "[ ] " });
+                content.push_str(if checked {
+                    "<span foreground=\"#a6e3a1\">[x]</span> "
+                } else {
+                    "<span foreground=\"#6c7086\">[ ]</span> "
+                });
             }
             Event::FootnoteReference(label) => {
                 content.push_str(&glib::markup_escape_text(&format!("[^{label}]")));
@@ -347,9 +364,9 @@ mod tests {
     #[test]
     fn code_highlighting_escapes_markup_and_styles_tokens() {
         let markup = highlight_code_markup("let message = \"<hello>\"; // note", Some("rust"));
-        assert!(markup.contains("<b>let</b>"));
-        assert!(markup.contains("<u>&quot;&lt;hello&gt;&quot;</u>"));
-        assert!(markup.contains("<i>// note</i>"));
+        assert!(markup.contains("<span foreground=\"#cba6f7\" weight=\"bold\">let</span>"));
+        assert!(markup.contains("<span foreground=\"#a6e3a1\">&quot;&lt;hello&gt;&quot;</span>"));
+        assert!(markup.contains("<span foreground=\"#a6adc8\" style=\"italic\">// note</span>"));
         assert!(markup.contains("&lt;hello&gt;"));
     }
 
@@ -357,7 +374,7 @@ mod tests {
     fn hash_comments_are_only_highlighted_for_hash_comment_languages() {
         let rust = highlight_code_markup("let value = #tag;", Some("rust"));
         let python = highlight_code_markup("value = 1 # note", Some("python"));
-        assert!(!rust.contains("<i>#tag;</i>"));
-        assert!(python.contains("<i># note</i>"));
+        assert!(!rust.contains("<span foreground=\"#a6adc8\" style=\"italic\">#tag;</span>"));
+        assert!(python.contains("<span foreground=\"#a6adc8\" style=\"italic\"># note</span>"));
     }
 }

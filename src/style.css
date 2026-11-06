@@ -95,212 +95,173 @@ window.prompt-overlay.background {
 
 /* Hyprland-managed chat window */
 window.background.card-window {
-    background-color: transparent;
-    color: #ffffff;
+    background-color: #121212;
+    color: #e0e0e0;
+    border: 1px solid #333333;
+    border-radius: 16px;
 }
 
 .magic-card {
-    color: #f1f3f4;
-    background-color: rgba(18, 18, 20, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0px;
-    padding: 16px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
-}
-
-.magic-header {
-    min-height: 40px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: 12px;
-    margin-bottom: 12px;
-}
-
-.magic-header .brand-icon {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
-    padding: 8px;
-    -gtk-icon-size: 16px;
-}
-
-.magic-title {
-    color: #ffffff;
-    font-weight: 500;
-    font-size: 15px;
-}
-
-.magic-status {
-    color: #9aa0a6;
-    background-color: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 10px;
-    font-weight: 500;
+    color: #e0e0e0;
+    background-color: #121212;
+    border-radius: 16px;
 }
 
 .chat-history,
 .chat-history viewport {
-    background-color: transparent;
+    background-color: #121212;
     border: none;
 }
 
 .chat-messages {
-    padding: 8px 6px 16px 2px;
+    padding: 16px;
 }
 
-.selection-notice {
-    color: #e8eaed;
-    background-color: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 14px 16px;
-    margin: 4px 0 16px;
-}
-
-.selection-notice-icon {
-    color: #8ab4f8;
-    -gtk-icon-size: 20px;
-}
-
-.selection-notice-title {
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.selection-notice-label {
-    color: #9aa0a6;
-    font-size: 12px;
+.initial-capture {
+    min-height: 180px;
+    border-radius: 12px;
+    margin-bottom: 12px;
 }
 
 .chat-bubble-user {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 18px 18px 4px 18px;
-    padding: 12px 16px;
-    margin: 8px 0 14px;
+    color: #e0e0e0;
+    background-color: #222222;
+    border: none;
+    border-radius: 18px 18px 5px 18px;
+    padding: 14px 18px;
+    margin: 4px 0 12px;
+    min-width: 120px;
 }
 
 .chat-bubble-user label,
 .chat-message-text {
-    color: #ffffff;
-    font-size: 14px;
+    color: #e0e0e0;
+    font-size: 16px;
 }
 
 .chat-bubble-ai {
-    color: #e8eaed;
+    color: #f4f4f5;
     background-color: transparent;
     border: none;
-    padding: 12px 4px;
-    margin: 4px 0 17px;
+    padding: 4px 2px;
+    margin: 0 0 12px;
+}
+
+/* -----------------------------------------------------
+   5. MARKDOWN & CODE BLOCKS (UPDATED FOR MODERN UI)
+-------------------------------------------------------- */
+
+.markdown-content {
+    font-family: system-ui;
 }
 
 .markdown-content,
 .markdown-paragraph,
 .markdown-list-item {
-    color: #e8eaed;
+    color: #e4e4e7; /* Slightly softer white for main text */
+    font-weight: 400;
 }
 
 .markdown-paragraph,
 .markdown-list-item {
-    font-size: 14px;
+    font-size: 17px;
+    line-height: 1.5;
 }
 
 .markdown-paragraph {
-    margin: 0 0 12px;
+    margin: 0 0 16px;
 }
 
+.markdown-list-item {
+    margin: 6px 0;
+}
+
+/* Bold headers with improved spacing */
 .markdown-heading {
     color: #ffffff;
-    font-weight: 500;
-    margin: 16px 0 8px;
+    font-weight: 700;
+    margin: 24px 0 12px;
 }
 
-.markdown-h1 {
-    font-size: 22px;
-}
+.markdown-h1 { font-size: 26px; }
+.markdown-h2 { font-size: 22px; }
+.markdown-h3 { font-size: 20px; }
+.markdown-h4, .markdown-h5, .markdown-h6 { font-size: 18px; }
 
-.markdown-h2 {
-    font-size: 18px;
-}
-
-.markdown-h3 {
-    font-size: 16px;
-}
-
-.markdown-h4,
-.markdown-h5,
-.markdown-h6 {
-    font-size: 14px;
-}
-
+/* The main code block container */
 .code-card {
-    color: #e8eaed;
-    background-color: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: #09090b; /* Deep black for contrast */
+    border: 1px solid #27272a; /* Subtle structural border */
     border-radius: 12px;
-    margin: 8px 0 16px;
+    margin: 12px 0 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     transition: border-color 150ms ease;
 }
 
 .code-card:hover {
-    border-color: rgba(255, 255, 255, 0.15);
+    border-color: #3f3f46;
 }
 
+/* Header of the code block */
 .code-toolbar {
-    min-height: 34px;
-    background-color: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    min-height: 38px;
+    background-color: #18181b; /* Slightly lighter than the code body */
+    border-bottom: 1px solid #27272a;
     border-radius: 12px 12px 0 0;
-    padding: 4px 8px 4px 14px;
+    padding: 4px 8px 4px 16px;
 }
 
 .code-language {
-    color: #9aa0a6;
-    font-size: 11px;
-    font-weight: 500;
+    color: #a1a1aa;
+    font-family: system-ui;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
 .code-copy-btn {
     background: transparent;
-    color: #9aa0a6;
-    border: 1px solid transparent;
+    color: #a1a1aa;
+    border: none;
     border-radius: 6px;
     padding: 6px 8px;
     transition: all 150ms ease;
 }
 
 .code-copy-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.08);
     color: #ffffff;
 }
 
+/* The syntax highlighted source */
 .code-block-source {
-    color: #dce5f5;
+    color: #f4f4f5;
     font-family: monospace;
-    font-size: 13px;
-    padding: 12px 14px;
+    font-size: 15px;
+    line-height: 1.4;
+    padding: 16px;
 }
 
-.markdown-list-item {
-    margin: 4px 0;
-}
-
+/* Styled Blockquotes */
 .markdown-blockquote {
-    color: #bdc1c6;
-    background-color: transparent;
-    border-left: 3px solid rgba(255, 255, 255, 0.2);
-    padding: 4px 16px;
-    margin: 8px 0;
+    color: #a1a1aa;
+    background-color: rgba(59, 130, 246, 0.05); /* Very subtle blue tint */
+    border-left: 4px solid #3b82f6; /* Accent blue to match your send button */
+    border-radius: 0 8px 8px 0;
+    padding: 8px 16px;
+    margin: 12px 0;
+    font-style: italic;
 }
 
 .markdown-rule {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: #27272a;
     min-height: 1px;
-    margin: 16px 0;
+    margin: 24px 0;
 }
+
+/* -----------------------------------------------------
+   6. REMAINING CHAT UI
+-------------------------------------------------------- */
 
 .prompt-presets {
     margin-top: 4px;
@@ -331,43 +292,33 @@ window.background.card-window {
 }
 
 .chat-composer {
-    background-color: rgba(20, 22, 27, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 24px;
-    padding: 8px;
-    margin-top: 8px;
+    background-color: transparent;
+    border: none;
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .attachment-row {
-    padding: 0 2px 2px;
+    padding: 0 0 4px;
 }
 
 .attachment-previews {
-    min-height: 68px;
+    min-height: 0;
 }
 
 .message-image-previews {
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 .attachment-preview {
-    background-color: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 10px;
-    margin-right: 8px;
     min-width: 96px;  /* ~2.5 cm at 96 DPI */
     min-height: 72px; /* ~1.9 cm at 96 DPI */
-}
-
-.attachment-preview image,
-.attachment-preview picture {
-    min-width: 96px;
-    min-height: 72px;
+    border-radius: 20px;
 }
 
 .attachment-status,
 .message-attachment {
-    color: #9aa0a6;
+    color: #808080;
     font-size: 11px;
 }
 
@@ -376,54 +327,100 @@ window.background.card-window {
 }
 
 .chat-input-bar {
-    padding-top: 4px;
+    min-height: 52px;
+    margin: 0 4px;
+}
+
+.chat-entry-shell {
+    min-height: 48px;
+    background-color: transparent;
+    border: none;
+    padding: 0 10px;
 }
 
 .chat-entry {
-    color: #ffffff;
+    color: #e0e0e0;
     background-color: transparent;
     border: none;
-    padding: 10px 12px;
-    font-size: 14px;
-    caret-color: #ffffff;
+    padding: 8px 6px;
+    font-family: system-ui;
+    font-size: 22px;
+    font-weight: 500;
+    caret-color: #3b82f6;
 }
 
-.chat-entry:focus {
+.chat-entry,
+.chat-entry:focus,
+.chat-entry:focus-within,
+.chat-entry > text,
+.chat-entry > text:focus {
+    color: #e0e0e0;
+    background: none;
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    border-color: transparent;
+    outline: none;
+    outline-style: none;
+    outline-width: 0;
+    outline-color: transparent;
     box-shadow: none;
 }
 
 .chat-entry placeholder {
-    color: #9aa0a6;
+    color: #808080;
+    font-family: system-ui;
+    font-size: 22px;
+    font-weight: 500;
 }
 
-.capture-image-btn,
-.chat-send-btn {
-    color: #e8eaed;
-    background-color: rgba(255, 255, 255, 0.05);
-    border: 1px solid transparent;
-    border-radius: 50%;
-    padding: 10px;
-    min-width: 36px;
-    min-height: 36px;
-    transition: all 150ms ease;
-}
-
-.capture-image-btn:hover,
-.chat-send-btn:hover {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.header-action {
-    color: #9aa0a6;
+.capture-image-btn {
+    color: #808080;
     background-color: transparent;
-    border: 1px solid transparent;
+    border: none;
     border-radius: 50%;
     padding: 8px;
-    transition: all 150ms ease;
+    min-width: 42px;
+    min-height: 42px;
+    -gtk-icon-size: 22px;
 }
 
-.header-action:hover {
-    color: #ffffff;
+.capture-image-btn:hover {
+    color: #e0e0e0;
     background-color: rgba(255, 255, 255, 0.08);
+}
+
+.chat-send-btn {
+    color: #3b82f6;
+    background-color: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 6px;
+    min-width: 44px;
+    min-height: 44px;
+    -gtk-icon-size: 32px;
+}
+
+.chat-send-btn:hover {
+    color: #60a5fa;
+    background-color: transparent;
+}
+
+.response-copy {
+    color: #808080;
+    background-color: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 6px;
+    min-width: 28px;
+    min-height: 28px;
+}
+
+.response-copy:hover {
+    color: #e0e0e0;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.response-actions {
+    min-height: 28px;
 }
