@@ -77,10 +77,11 @@ pub fn show_prompt_overlay<F, D>(
     let prompt_size = (prompt_width, prompt_height);
     let position = position_prompt(cursor, monitor_geometry, prompt_size);
     let window = gtk4::ApplicationWindow::new(app);
+    window.init_layer_shell();
     window.set_title(Some("Ask about this capture"));
     window.set_default_size(prompt_width, prompt_height);
+    window.set_decorated(false);
     window.add_css_class("prompt-overlay");
-    window.init_layer_shell();
     window.set_layer(Layer::Overlay);
     window.set_monitor(Some(&monitor));
     window.set_keyboard_mode(KeyboardMode::Exclusive);
@@ -112,7 +113,10 @@ pub fn show_prompt_overlay<F, D>(
     entry.set_width_chars(1);
     entry.set_hexpand(true);
 
-    let send_button = gtk4::Button::from_icon_name("go-next-symbolic");
+    let send_icon = gtk4::Image::from_icon_name("document-send");
+    send_icon.set_pixel_size(32);
+    let send_button = gtk4::Button::new();
+    send_button.set_child(Some(&send_icon));
     send_button.add_css_class("prompt-send-button");
     send_button.set_tooltip_text(Some("Send question"));
     composer.append(&entry);

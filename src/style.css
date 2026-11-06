@@ -14,6 +14,15 @@ window decoration.background {
     box-shadow: none; /* Kills the default square shadow causing the dark corners */
 }
 
+window.prompt-overlay,
+window.prompt-overlay.background {
+    background: none;
+    background-color: rgba(0, 0, 0, 0);
+    background-image: none;
+    border: none;
+    box-shadow: none;
+}
+
 /* 2. MAIN CARD UI */
 .prompt-card {
     color: #e8eaed;
@@ -21,7 +30,7 @@ window decoration.background {
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 28px; /* Corners will now float perfectly */
     padding: 20px;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8);
+    box-shadow: none;
 }
 
 .prompt-preview {
@@ -83,12 +92,6 @@ window decoration.background {
 .prompt-send-button:hover {
     background-color: rgba(255, 255, 255, 0.12);
 }
-
-/* Force the right-arrow icon to change to a paper-plane send icon */
-.prompt-send-button image {
-    -gtk-icon-source: -gtk-icontheme("send-symbolic");
-}
-
 
 /* Hyprland-managed chat window */
 window.background.card-window {

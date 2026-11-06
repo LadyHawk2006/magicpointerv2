@@ -248,7 +248,10 @@ pub fn build_floating_card(
     capture_btn.add_css_class("capture-image-btn");
     capture_btn.set_tooltip_text(Some("Capture another image"));
 
-    let send_btn = gtk4::Button::from_icon_name("go-up-symbolic");
+    let send_icon = gtk4::Image::from_icon_name("document-send");
+    send_icon.set_pixel_size(32);
+    let send_btn = gtk4::Button::new();
+    send_btn.set_child(Some(&send_icon));
     send_btn.add_css_class("chat-send-btn");
     send_btn.set_tooltip_text(Some("Send message"));
     card.append(&preset_grid);
