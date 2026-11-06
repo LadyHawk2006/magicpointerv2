@@ -38,29 +38,26 @@ pub fn build_floating_card(
 
     window.add_css_class("card-window");
 
-    let card_overlay = gtk4::Overlay::new();
-    card_overlay.set_hexpand(true);
-    card_overlay.set_vexpand(true);
-
     // Outer card
     let card = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     card.add_css_class("magic-card");
     card.set_hexpand(true);
     card.set_vexpand(true);
-    card_overlay.set_child(Some(&card));
 
     let fetch_glow = gtk4::DrawingArea::new();
     fetch_glow.add_css_class("chat-fetch-glow");
     fetch_glow.set_hexpand(true);
-    fetch_glow.set_vexpand(true);
     fetch_glow.set_can_target(false);
     fetch_glow.set_visible(false);
+    fetch_glow.set_valign(gtk4::Align::Start);
+    fetch_glow.set_size_request(-1, 2);
     let glow_phase = Rc::new(Cell::new(0.0));
     let glow_phase_draw = glow_phase.clone();
     fetch_glow.set_draw_func(move |_, context, width, height| {
-        draw_fetch_glow(context, width, height, glow_phase_draw.get());
+        if let Err(error) = draw_fetch_glow(context, width, height, glow_phase_draw.get()) {
+            tracing::warn!("Failed to draw response activity glow: {error}");
+        }
     });
-    card_overlay.add_overlay(&fetch_glow);
     let fetch_count = Rc::new(Cell::new(0));
     let fetch_animation = Rc::new(RefCell::new(None));
 
@@ -106,6 +103,9 @@ pub fn build_floating_card(
     let attach_streaming_receiver = {
         let scrolled_weak = scrolled.downgrade();
         let last_ai_store = last_ai_text.clone();
+        let fetch_count = fetch_count.clone();
+        let fetch_glow = fetch_glow.clone();
+        let fetch_animation = fetch_animation.clone();
 
         move |mut rx: mpsc::Receiver<String>, response: gtk4::Box| {
             let scrolled_weak = scrolled_weak.clone();
@@ -139,6 +139,9 @@ pub fn build_floating_card(
     };
 
     // --- Interactive Chat Input Bar + Resize Corner ---
+    let composer_overlay = gtk4::Overlay::new();
+    composer_overlay.add_css_class("chat-composer-overlay");
+    composer_overlay.set_hexpand(true);
     let composer = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
     composer.add_css_class("chat-composer");
 
@@ -166,8 +169,8 @@ pub fn build_floating_card(
     entry.add_css_class("chat-entry");
     entry.set_wrap_mode(gtk4::WrapMode::WordChar);
     entry.set_accepts_tab(false);
-    entry.set_top_margin(7);
-    entry.set_bottom_margin(7);
+    entry.set_top_margin(10);
+    entry.set_bottom_margin(10);
     entry.set_left_margin(6);
     entry.set_right_margin(6);
 
@@ -176,8 +179,7 @@ pub fn build_floating_card(
     let input_placeholder = gtk4::Label::new(Some("Ask about this..."));
     input_placeholder.add_css_class("chat-entry-placeholder");
     input_placeholder.set_halign(gtk4::Align::Start);
-    input_placeholder.set_valign(gtk4::Align::Start);
-    input_placeholder.set_margin_top(7);
+    input_placeholder.set_valign(gtk4::Align::Center);
     input_placeholder.set_margin_start(6);
     input_placeholder.set_can_target(false);
     entry_overlay.add_overlay(&input_placeholder);
@@ -216,9 +218,11 @@ pub fn build_floating_card(
     bottom_row.append(&send_btn);
     composer.append(&attachment_row);
     composer.append(&bottom_row);
-    card.append(&composer);
+    composer_overlay.set_child(Some(&composer));
+    composer_overlay.add_overlay(&fetch_glow);
+    card.append(&composer_overlay);
 
-    window.set_child(Some(&card_overlay));
+    window.set_child(Some(&card));
 
     let settings_app = app.clone();
     let settings_state = preferences.settings.clone();
@@ -481,81 +485,41 @@ fn draw_fetch_glow(
         return Ok(());
     }
 
-    let pulse = 0.45 + 0.55 * ((phase.sin() + 1.0) / 2.0);
-    for (line_width, alpha) in [(14.0, 0.09), (8.0, 0.13), (2.5, 0.72)] {
-        let gradient =
-            gtk4::cairo::LinearGradient::new(0.0, 0.0, width as f64, height as f64 * 0.45);
-        for (offset, color) in [
-            (0.0, (1.0, 0.08, 0.20)),
-            (0.2, (1.0, 0.48, 0.05)),
-            (0.4, (0.95, 0.92, 0.12)),
-            (0.6, (0.05, 0.88, 0.42)),
-            (0.8, (0.12, 0.48, 1.0)),
-            (1.0, (0.72, 0.18, 1.0)),
-        ] {
-            gradient.add_color_stop_rgba(
-                offset,
-                color.0,
-                color.1,
-                color.2,
-                alpha * pulse,
+    let pulse = 0.4 + 0.6 * ((phase.sin() + 1.0) / 2.0);
+    let phase_turns = phase / std::f64::consts::TAU;
+    let colors = [
+        (1.0, 0.08, 0.20),
+        (1.0, 0.48, 0.05),
+        (0.95, 0.92, 0.12),
+        (0.05, 0.88, 0.42),
+        (0.12, 0.48, 1.0),
+        (0.72, 0.18, 1.0),
+    ];
+    for (line_width, alpha) in [(12.0, 0.08), (7.0, 0.16), (2.0, 0.82)] {
+        let gradient = gtk4::cairo::LinearGradient::new(0.0, 0.5, width as f64, 0.5);
+        for step in 0..=60 {
+            let offset = step as f64 / 60.0;
+            let color_position = (offset + phase_turns).rem_euclid(1.0);
+            let palette_position = color_position * colors.len() as f64;
+            let color_index = palette_position.floor() as usize % colors.len();
+            let next_color = (color_index + 1) % colors.len();
+            let blend = palette_position.fract();
+            let color = (
+                colors[color_index].0 * (1.0 - blend) + colors[next_color].0 * blend,
+                colors[color_index].1 * (1.0 - blend) + colors[next_color].1 * blend,
+                colors[color_index].2 * (1.0 - blend) + colors[next_color].2 * blend,
             );
+            gradient.add_color_stop_rgba(offset, color.0, color.1, color.2, alpha * pulse);
         }
 
         context.set_line_width(line_width);
+        context.set_line_cap(gtk4::cairo::LineCap::Round);
         context.set_source(&gradient)?;
-        rounded_rectangle_path(
-            context,
-            9.0,
-            9.0,
-            width as f64 - 18.0,
-            height as f64 - 18.0,
-            16.0,
-        );
+        context.move_to(0.0, 0.5);
+        context.line_to(width as f64, 0.5);
         context.stroke()?;
     }
     Ok(())
-}
-
-fn rounded_rectangle_path(
-    context: &gtk4::cairo::Context,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    radius: f64,
-) {
-    let radius = radius.min(width / 2.0).min(height / 2.0);
-    context.new_sub_path();
-    context.arc(
-        x + width - radius,
-        y + radius,
-        radius,
-        -std::f64::consts::FRAC_PI_2,
-        0.0,
-    );
-    context.arc(
-        x + width - radius,
-        y + height - radius,
-        radius,
-        0.0,
-        std::f64::consts::FRAC_PI_2,
-    );
-    context.arc(
-        x + radius,
-        y + height - radius,
-        radius,
-        std::f64::consts::FRAC_PI_2,
-        std::f64::consts::PI,
-    );
-    context.arc(
-        x + radius,
-        y + radius,
-        radius,
-        std::f64::consts::PI,
-        3.0 * std::f64::consts::FRAC_PI_2,
-    );
-    context.close_path();
 }
 
 fn refresh_attachment_previews(container: &gtk4::Box, images: &[DynamicImage]) {

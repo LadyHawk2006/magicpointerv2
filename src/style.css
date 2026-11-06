@@ -349,6 +349,14 @@ window.background.card-window {
     border-top: 1px solid alpha(@theme_fg_color, 0.08);
 }
 
+.chat-composer-overlay {
+    background: transparent;
+}
+
+.chat-fetch-glow {
+    background: transparent;
+}
+
 .attachment-row {
     padding: 0 0 4px;
 }
@@ -394,10 +402,17 @@ window.background.card-window {
 }
 
 .chat-entry-shell {
-    min-height: 0;
-    background-color: transparent;
+    min-height: 48px;
+    background-color: alpha(@theme_fg_color, 0.075);
     border: none;
-    padding: 0 4px;
+    border-radius: 999px;
+    padding: 0 12px;
+    margin: 2px 0;
+    transition: background-color 160ms ease;
+}
+
+.chat-entry-shell:focus-within {
+    background-color: alpha(@theme_fg_color, 0.12);
 }
 
 .chat-entry-scroll,
@@ -412,7 +427,7 @@ window.background.card-window {
     background-color: transparent;
     border: none;
     font-family: system-ui;
-    font-size: 22px;
+    font-size: 17px;
     font-weight: 500;
 }
 
@@ -435,7 +450,7 @@ window.background.card-window {
 .chat-entry-placeholder {
     color: @insensitive_fg_color;
     font-family: system-ui;
-    font-size: 22px;
+    font-size: 17px;
     font-weight: 500;
 }
 
