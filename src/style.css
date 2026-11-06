@@ -23,6 +23,13 @@ window.prompt-overlay.background {
     box-shadow: none;
 }
 
+window.auth-setup-window,
+window.auth-setup-window.background,
+.auth-setup-content {
+    color: @theme_fg_color;
+    background-color: @theme_bg_color;
+}
+
 /* 2. MAIN CARD UI */
 .prompt-card {
     color: @theme_fg_color;

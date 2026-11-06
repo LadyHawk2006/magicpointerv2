@@ -18,8 +18,10 @@ pub fn show_api_key_setup(
         .resizable(false)
         .modal(true)
         .build();
+    window.add_css_class("auth-setup-window");
 
     let content = gtk4::Box::new(gtk4::Orientation::Vertical, 16);
+    content.add_css_class("auth-setup-content");
     content.set_margin_top(24);
     content.set_margin_bottom(24);
     content.set_margin_start(24);
