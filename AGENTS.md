@@ -3,9 +3,9 @@
 ## Project Vision & Overview
 **Project Codename:** `magicpointerv2`  
 **Target Environment:** Arch Linux | Hyprland (Wayland)  
-**Core Goal:** Build an intent-aware, spatial desktop intelligence pipeline inspired by multimodal vision overlays (e.g., Google's Magic Pointer). 
+**Core Goal:** Build an intent-aware, spatial desktop intelligence pipeline inspired by multimodal vision overlays (e.g., Google's Magic Pointer).
 
-The system operates as a zero-subprocess, high-performance background daemon implemented entirely in **Rust**. It queries compositor state via native IPC, provides an integrated GTK4 Wayland layer-shell selection canvas, captures visual bounding boxes directly from compositor buffers into RAM via `libwayshot`, and streams multimodal payloads to AI backends (Gemini API)—rendering streaming responses in floating overlays directly anchored to the cursor.
+The application is implemented in **Rust**. It queries compositor state via IPC, provides GTK4 Wayland layer-shell surfaces for selection and the cursor-adjacent prompt composer, captures visual bounding boxes directly from compositor buffers into RAM via `libwayshot`, and streams multimodal payloads to Gemini. The response is shown in a regular GTK window managed by Hyprland. OAuth browser launch and Secret Service keyring integration currently use desktop command-line utilities, so the complete application is not zero-subprocess.
 
 ---
 
@@ -24,13 +24,15 @@ The system operates as a zero-subprocess, high-performance background daemon imp
 │                                                           │
 │  2. In-Memory Frame Capture (libwayshot)                  │
 │     └── Direct wlr-screencopy to RAM buffer (image crate) │
-│     └── Zero subprocesses, zero disk I/O                  │
+│     └── No screenshot file required                      │
 │                                                           │
-│  3. Multimodal Streaming Dispatch                         │
-│     └── Stream memory buffer to Gemini Flash (reqwest/SSE)│
+│  3. Cursor-Adjacent Prompt (GTK4 Layer-Shell)             │
+│     └── Prominent thumbnail, question field, send         │
+│     └── Position near cursor; flip/clamp to monitor bounds│
 │                                                           │
-│  4. Floating Card Display & Clipboard staging             │
-│     └── Exits cleanly once dismissed                      │
+│  4. Gemini Streaming (reqwest/SSE)                        │
+│     └── Resize/JPEG encode capture and send with prompt   │
+│     └── Stream answer to the regular chat window          │
 └───────────────────────────────────────────────────────────┘
            │
            ▼
@@ -60,6 +62,7 @@ The system operates as a zero-subprocess, high-performance background daemon imp
 * **In-Memory Screencopy:** `libwayshot` (direct `zwlr_screencopy_v1` capture into `image::DynamicImage` / `RgbaImage` buffers, replacing `grim`)
 * **Multimodal Client:** `reqwest` (with `stream` & TLS support) targeting Gemini API endpoints via SSE
 * **Response Window:** Native GTK4 window managed by Hyprland window rules; the selection canvas remains a GTK4 layer-shell surface.
+* **Prompt Composer:** Compact GTK4 layer-shell surface positioned by the cursor monitor's geometry and edge-aware margins.
 * **Clipboard Control:** `arboard` (cross-platform / Wayland clipboard crate)
 
 ---
@@ -74,6 +77,7 @@ The system operates as a zero-subprocess, high-performance background daemon imp
     * Interactive drag-to-select bounding box via `GestureDrag` and custom Cairo drawing.
     * Instant window-snap mode leveraging geometry from `hypr_ipc.rs`.
     * Yields target coordinates `(x, y, w, h)` directly to the capture pipeline.
+  * `prompt_overlay.rs`: Cursor-adjacent GTK4 layer-shell prompt with a capture thumbnail, text entry, Enter/send submission, and Escape dismissal. The prompt chooses the monitor containing the cursor and flips/clamps its position against that monitor's edges.
 
 ### Phase 2: Native In-Memory Screencopy
 * **Goal:** Capture targeted screen pixels directly into memory buffers with zero disk writes and zero subprocess overhead.
@@ -86,8 +90,9 @@ The system operates as a zero-subprocess, high-performance background daemon imp
   * `ai_agent.rs`: Asynchronous client using `reqwest` targeting Gemini Flash. Encodes in-memory image bytes (JPEG/PNG) into payload, consumes SSE token streams, and pipes tokens to the UI via `tokio::sync::mpsc` channels.
 
 ### Phase 4: Wayland Floating Card & Action Pipeline
-* **Goal:** Display streaming AI output and actions in an interactive floating UI anchored near the target cursor position.
+* **Goal:** Ask about the capture in a cursor-adjacent layer-shell composer, then display streaming AI output in a Hyprland-managed chat window.
 * **Modules to Implement:**
+  * `prompt_overlay.rs`: Native GTK4 layer-shell prompt composer positioned near the cursor and kept within the selected monitor's bounds.
   * `ui.rs`: Native GTK4 response window with CSS styling and pulldown-cmark Markdown rendering. Hyprland manages floating state, placement, opacity, and interactive resizing.
   * `executor.rs`: Handles quick actions like clipboard copies (via `arboard`) and smooth dismissal/cleanup of overlay windows.
 

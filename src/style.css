@@ -3,9 +3,97 @@ window.background.selection-window,
     background: transparent;
 }
 
-window.background.card-window {
-    background-color: translucent;
+/* 1. STRIP GTK DEFAULT WINDOW BACKGROUNDS & SHADOWS */
+window,
+window.background,
+window decoration,
+window decoration.background {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none; /* Kills the default square shadow causing the dark corners */
+}
+
+/* 2. MAIN CARD UI */
+.prompt-card {
     color: #e8eaed;
+    background-color: #131314;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 28px; /* Corners will now float perfectly */
+    padding: 20px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8);
+}
+
+.prompt-preview {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: none; 
+    border-radius: 16px;
+    margin-bottom: 16px;
+}
+
+.prompt-composer {
+    min-height: 50px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* 3. INPUT ENTRY OVERRIDES */
+.prompt-entry,
+.prompt-entry > text {
+    color: #f8f9fa;
+    background: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 8px 0;
+    font-size: 20px;
+    font-weight: 400;
+    caret-color: #a8c7fa;
+}
+
+.prompt-entry:focus,
+.prompt-entry:focus-within,
+.prompt-entry > text:focus {
+    background: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+.prompt-entry placeholder {
+    color: #80868b;
+}
+
+/* 4. SEND BUTTON OVERRIDES */
+.prompt-send-button {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: none;
+    border-radius: 50%;
+    padding: 10px;
+    min-width: 40px;
+    min-height: 40px;
+    margin-left: 12px;
+    transition: background-color 0.2s ease;
+}
+
+.prompt-send-button:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Force the right-arrow icon to change to a paper-plane send icon */
+.prompt-send-button image {
+    -gtk-icon-source: -gtk-icontheme("send-symbolic");
+}
+
+
+/* Hyprland-managed chat window */
+window.background.card-window {
+    background-color: transparent;
+    color: #ffffff;
 }
 
 .magic-card {
@@ -266,7 +354,6 @@ window.background.card-window {
     margin-right: 8px;
     min-width: 96px;  /* ~2.5 cm at 96 DPI */
     min-height: 72px; /* ~1.9 cm at 96 DPI */
-    overflow: show;
 }
 
 .attachment-preview image,

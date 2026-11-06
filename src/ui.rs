@@ -17,6 +17,7 @@ pub fn build_floating_card(
     app: &gtk4::Application,
     captured_image: DynamicImage,
     captured_context: Option<String>,
+    initial_prompt: String,
     session: ConversationSession,
     tokio_rt: Arc<tokio::runtime::Runtime>,
 ) -> gtk4::ApplicationWindow {
@@ -421,8 +422,10 @@ pub fn build_floating_card(
         });
     }
 
+    let send_submit = submit_action.clone();
+    let send_entry = entry.clone();
     send_btn.connect_clicked(move |_| {
-        submit_action(entry.text().to_string());
+        send_submit(send_entry.text().to_string());
     });
 
     // Escape key closes window
@@ -440,6 +443,7 @@ pub fn build_floating_card(
     });
     window.add_controller(key_controller);
 
+    submit_action(initial_prompt);
     window
 }
 

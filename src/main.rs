@@ -2,11 +2,12 @@ use gtk4::gdk;
 use gtk4::prelude::*;
 use magicpointerv2::ai_agent::ConversationSession;
 use magicpointerv2::hypr_ipc;
+use magicpointerv2::prompt_overlay;
 use magicpointerv2::screencapture;
 use magicpointerv2::selection_overlay::{self, Rect};
 use magicpointerv2::ui;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 fn load_custom_css() {
     let css_provider = gtk4::CssProvider::new();
@@ -66,26 +67,54 @@ fn main() {
 
                         let session = ConversationSession::new();
 
-                        let context_label = hypr_ipc::get_hyprland_state().ok().and_then(|s| {
-                            s.active_window
-                                .map(|w| format!("{} ({})", w.class, w.title))
-                        });
+                        let (cursor, context_label) = match hypr_ipc::get_hyprland_state() {
+                            Ok(state) => (
+                                state.cursor,
+                                state
+                                    .active_window
+                                    .map(|window| format!("{} ({})", window.class, window.title)),
+                            ),
+                            Err(error) => {
+                                warn!(
+                                    "Could not query Hyprland cursor; placing prompt near selected region: {error}"
+                                );
+                                (
+                                    (
+                                        rect.x.saturating_add(rect.width as i32),
+                                        rect.y.saturating_add(rect.height as i32),
+                                    ),
+                                    None,
+                                )
+                            }
+                        };
 
-                        let card_window = ui::build_floating_card(
+                        let submit_app = app_handle.clone();
+                        let submit_session = session.clone();
+                        let submit_runtime = rt_handle.clone();
+                        let dismiss_app = app_handle.clone();
+                        prompt_overlay::show_prompt_overlay(
                             &app_handle,
                             image,
-                            context_label,
-                            session.clone(),
-                            rt_handle.clone(),
+                            cursor,
+                            move |prompt, image| {
+                                let chat_window = ui::build_floating_card(
+                                    &submit_app,
+                                    image,
+                                    context_label,
+                                    prompt,
+                                    submit_session,
+                                    submit_runtime,
+                                );
+
+                                let app_exit = submit_app.clone();
+                                chat_window.connect_destroy(move |_| {
+                                    info!("Chat closed. Exiting process.");
+                                    app_exit.quit();
+                                });
+                                chat_window.present();
+                            },
+                            move || dismiss_app.quit(),
                         );
-
-                        let app_exit = app_handle.clone();
-                        card_window.connect_destroy(move |_| {
-                            info!("Chat closed. Exiting process.");
-                            app_exit.quit();
-                        });
-
-                        card_window.present();
                     }
                     Err(e) => {
                         error!("Screen capture error: {}", e);

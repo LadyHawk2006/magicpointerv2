@@ -4,6 +4,7 @@ pub mod executor;
 pub mod hypr_ipc;
 pub mod keyring_store;
 mod markdown;
+pub mod prompt_overlay;
 pub mod screencapture;
 pub mod selection_overlay;
 pub mod ui;
