@@ -7,7 +7,11 @@ use magicpointerv2::hypr_ipc;
 use magicpointerv2::prompt_overlay;
 use magicpointerv2::screencapture;
 use magicpointerv2::selection_overlay::{self, Rect};
-use magicpointerv2::ui;
+use magicpointerv2::settings::{self, AppSettings};
+use magicpointerv2::settings_ui;
+use magicpointerv2::ui::{self, ChatPreferences};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -25,7 +29,11 @@ fn load_custom_css() {
     }
 }
 
-fn start_selection(app: gtk4::Application, rt: Arc<tokio::runtime::Runtime>) {
+fn start_selection(
+    app: gtk4::Application,
+    rt: Arc<tokio::runtime::Runtime>,
+    settings_state: Rc<RefCell<AppSettings>>,
+) {
     info!("Opening spatial selection overlay...");
 
     let app_handle = app.clone();
@@ -47,35 +55,45 @@ fn start_selection(app: gtk4::Application, rt: Arc<tokio::runtime::Runtime>) {
 
                     let session = ConversationSession::new();
 
-                    let (cursor, context_label) = match hypr_ipc::get_hyprland_state() {
-                        Ok(state) => (
-                            state.cursor,
-                            state
-                                .active_window
-                                .map(|window| format!("{} ({})", window.class, window.title)),
-                        ),
-                        Err(error) => {
-                            warn!(
-                                "Could not query Hyprland cursor; placing prompt near selected region: {error}"
-                            );
-                            (
+                    let (cursor, active_window_title, context_label) =
+                        match hypr_ipc::get_hyprland_state() {
+                            Ok(state) => (
+                                state.cursor,
+                                state
+                                    .active_window
+                                    .as_ref()
+                                    .map(|window| window.title.clone()),
+                                state
+                                    .active_window
+                                    .map(|window| format!("{} ({})", window.class, window.title)),
+                            ),
+                            Err(error) => {
+                                warn!(
+                                    "Could not query Hyprland cursor; placing prompt near selected region: {error}"
+                                );
                                 (
-                                    rect.x.saturating_add(rect.width as i32),
-                                    rect.y.saturating_add(rect.height as i32),
-                                ),
-                                None,
-                            )
-                        }
-                    };
+                                    (
+                                        rect.x.saturating_add(rect.width as i32),
+                                        rect.y.saturating_add(rect.height as i32),
+                                    ),
+                                    None,
+                                    None,
+                                )
+                            }
+                        };
 
                     let submit_app = app_handle.clone();
                     let submit_session = session.clone();
                     let submit_runtime = rt_handle.clone();
+                    let submit_settings = settings_state.clone();
+                    let submit_active_window_title = active_window_title.clone();
                     let dismiss_app = app_handle.clone();
+                    let overlay_opacity = settings_state.borrow().overlay_opacity;
                     prompt_overlay::show_prompt_overlay(
                         &app_handle,
                         image,
                         cursor,
+                        overlay_opacity,
                         move |prompt, image| {
                             let chat_window = ui::build_floating_card(
                                 &submit_app,
@@ -84,6 +102,10 @@ fn start_selection(app: gtk4::Application, rt: Arc<tokio::runtime::Runtime>) {
                                 prompt,
                                 submit_session,
                                 submit_runtime,
+                                ChatPreferences {
+                                    active_window_title: submit_active_window_title,
+                                    settings: submit_settings,
+                                },
                             );
 
                             let app_exit = submit_app.clone();
@@ -120,9 +142,23 @@ fn main() {
             .expect("Failed to initialize Tokio runtime"),
     );
 
+    let settings_mode = std::env::args_os().any(|arg| arg == "--settings");
     let app = gtk4::Application::builder()
         .application_id("com.magicpointerv2.tool")
+        .flags(if settings_mode {
+            gtk4::gio::ApplicationFlags::NON_UNIQUE
+        } else {
+            gtk4::gio::ApplicationFlags::default()
+        })
         .build();
+    app.add_main_option(
+        "settings",
+        gtk4::glib::Char(0),
+        gtk4::glib::OptionFlags::NONE,
+        gtk4::glib::OptionArg::None,
+        "Open the settings panel",
+        None,
+    );
 
     let rt = tokio_rt.clone();
 
@@ -130,31 +166,79 @@ fn main() {
         load_custom_css();
     });
 
-    app.connect_activate(move |app| match auth::get_api_key() {
-        Ok(Some(_)) => start_selection(app.clone(), rt.clone()),
-        Ok(None) => {
-            info!("No Gemini API key configured; opening first-run setup.");
-            let app_saved = app.clone();
-            let runtime_saved = rt.clone();
-            let app_cancelled = app.clone();
-            auth_setup::show_api_key_setup(
-                app,
-                None,
-                move || start_selection(app_saved.clone(), runtime_saved.clone()),
-                move || app_cancelled.quit(),
-            );
+    app.connect_activate(move |app| {
+        let current_settings = match AppSettings::load() {
+            Ok(settings) => settings,
+            Err(error) => {
+                error!("Could not load application settings: {error:#}");
+                app.quit();
+                return;
+            }
+        };
+        let settings_state = Rc::new(RefCell::new(current_settings));
+        if let Err(error) = settings::apply_appearance(app, &settings_state.borrow()) {
+            warn!("Could not apply all appearance settings: {error:#}");
         }
-        Err(error) => {
-            warn!("Could not access the system keyring: {error}");
-            let app_saved = app.clone();
-            let runtime_saved = rt.clone();
-            let app_cancelled = app.clone();
-            auth_setup::show_api_key_setup(
-                app,
-                Some(format!("{error:#}")),
-                move || start_selection(app_saved.clone(), runtime_saved.clone()),
-                move || app_cancelled.quit(),
-            );
+
+        if settings_mode {
+            settings_ui::show_settings(app, settings_state);
+            return;
+        }
+
+        match auth::get_api_key() {
+            Ok(Some(_)) => start_selection(app.clone(), rt.clone(), settings_state),
+            Ok(None) => {
+                info!("No Gemini API key configured; opening first-run setup.");
+                let app_saved = app.clone();
+                let runtime_saved = rt.clone();
+                let settings_saved = settings_state.clone();
+                let app_cancelled = app.clone();
+                auth_setup::show_api_key_setup(
+                    app,
+                    None,
+                    move || match AppSettings::load() {
+                        Ok(updated_settings) => {
+                            *settings_saved.borrow_mut() = updated_settings;
+                            start_selection(
+                                app_saved.clone(),
+                                runtime_saved.clone(),
+                                settings_saved.clone(),
+                            );
+                        }
+                        Err(error) => {
+                            error!("Could not reload settings after saving the API key: {error:#}");
+                            app_saved.quit();
+                        }
+                    },
+                    move || app_cancelled.quit(),
+                );
+            }
+            Err(error) => {
+                warn!("Could not access the system keyring: {error}");
+                let app_saved = app.clone();
+                let runtime_saved = rt.clone();
+                let settings_saved = settings_state.clone();
+                let app_cancelled = app.clone();
+                auth_setup::show_api_key_setup(
+                    app,
+                    Some(format!("{error:#}")),
+                    move || match AppSettings::load() {
+                        Ok(updated_settings) => {
+                            *settings_saved.borrow_mut() = updated_settings;
+                            start_selection(
+                                app_saved.clone(),
+                                runtime_saved.clone(),
+                                settings_saved.clone(),
+                            );
+                        }
+                        Err(error) => {
+                            error!("Could not reload settings after saving the API key: {error:#}");
+                            app_saved.quit();
+                        }
+                    },
+                    move || app_cancelled.quit(),
+                );
+            }
         }
     });
 

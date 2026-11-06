@@ -96,6 +96,11 @@ The application is implemented in **Rust**. It queries compositor state via IPC,
   * `ui.rs`: Native GTK4 response window with CSS styling and pulldown-cmark Markdown rendering. Hyprland manages floating state, placement, opacity, and interactive resizing.
   * `executor.rs`: Handles quick actions like clipboard copies (via `arboard`) and smooth dismissal/cleanup of overlay windows.
 
+### Persistent Settings
+* `settings.rs` stores preferences under `$XDG_CONFIG_HOME/magicpointerv2/settings.json` (or `~/.config/magicpointerv2/settings.json`) and API key values in the Secret Service keyring.
+* `settings_ui.rs` provides API key management, appearance controls, custom GTK CSS loading, and opt-in spatial context. Open it from the chat gear or by running `magicpointerv2 --settings`.
+* Spatial context is disabled by default. When enabled, selected hardware details, the active window title, and/or user-provided text are attached to every Gemini request.
+
 ---
 
 ## Key Milestone Checklist

@@ -30,6 +30,46 @@ window.auth-setup-window.background,
     background-color: @theme_bg_color;
 }
 
+window.settings-window,
+window.settings-window.background,
+.settings-content {
+    color: @theme_fg_color;
+    background-color: @theme_bg_color;
+}
+
+.settings-section {
+    padding: 14px;
+    background-color: alpha(@theme_fg_color, 0.035);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
+    border-radius: 12px;
+}
+
+.settings-status {
+    color: @theme_selected_bg_color;
+    font-size: 13px;
+}
+
+.chat-toolbar {
+    min-height: 28px;
+    padding: 2px 8px 0;
+}
+
+.chat-settings-button {
+    color: @insensitive_fg_color;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 2px;
+    -gtk-icon-size: 14px;
+}
+
+.chat-settings-button:hover {
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
+}
+
 /* 2. MAIN CARD UI */
 .prompt-card {
     color: @theme_fg_color;
@@ -56,22 +96,25 @@ window.auth-setup-window.background,
 }
 
 /* 3. INPUT ENTRY OVERRIDES */
-.prompt-entry,
-.prompt-entry > text {
+.prompt-entry-scroll,
+.prompt-entry-scroll > viewport {
+    background: transparent;
+    border: none;
+}
+
+.prompt-entry {
     color: @theme_fg_color;
     background: none;
     background-color: transparent;
     border: none;
     box-shadow: none;
-    padding: 8px 0;
     font-size: 20px;
     font-weight: 400;
     caret-color: @theme_selected_bg_color;
 }
 
 .prompt-entry:focus,
-.prompt-entry:focus-within,
-.prompt-entry > text:focus {
+.prompt-entry:focus-within {
     background: none;
     background-color: transparent;
     border: none;
@@ -79,8 +122,9 @@ window.auth-setup-window.background,
     outline: none;
 }
 
-.prompt-entry placeholder {
+.prompt-entry-placeholder {
     color: @insensitive_fg_color;
+    font-size: 20px;
 }
 
 /* 4. SEND BUTTON OVERRIDES */
@@ -323,44 +367,58 @@ window.background.card-window {
     border-radius: 20px;
 }
 
-.attachment-status,
-.message-attachment {
-    color: @insensitive_fg_color;
-    font-size: 11px;
+.pending-attachment-preview {
+    min-width: 96px;
+    min-height: 72px;
 }
 
-.attachment-status {
-    margin-left: 3px;
+.remove-attachment-button {
+    min-width: 22px;
+    min-height: 22px;
+    margin: 4px;
+    padding: 2px;
+    color: white;
+    background-color: alpha(black, 0.72);
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+.remove-attachment-button:hover {
+    background-color: alpha(black, 0.9);
 }
 
 .chat-input-bar {
-    min-height: 52px;
+    min-height: 48px;
     margin: 0 4px;
 }
 
 .chat-entry-shell {
-    min-height: 48px;
+    min-height: 0;
     background-color: transparent;
     border: none;
-    padding: 0 10px;
+    padding: 0 4px;
+}
+
+.chat-entry-scroll,
+.chat-entry-scroll > viewport {
+    background: transparent;
+    border: none;
 }
 
 .chat-entry {
     color: @theme_text_color;
+    caret-color: @theme_selected_bg_color;
     background-color: transparent;
     border: none;
-    padding: 8px 6px;
     font-family: system-ui;
     font-size: 22px;
     font-weight: 500;
-    caret-color: @theme_selected_bg_color;
 }
 
 .chat-entry,
 .chat-entry:focus,
-.chat-entry:focus-within,
-.chat-entry > text,
-.chat-entry > text:focus {
+.chat-entry:focus-within {
     color: @theme_text_color;
     background: none;
     background-color: transparent;
@@ -374,7 +432,7 @@ window.background.card-window {
     box-shadow: none;
 }
 
-.chat-entry placeholder {
+.chat-entry-placeholder {
     color: @insensitive_fg_color;
     font-family: system-ui;
     font-size: 22px;

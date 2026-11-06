@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tracing::{info, warn};
@@ -208,7 +209,52 @@ impl ConversationSession {
     /// Streams the next assistant turn to the UI
     pub async fn stream_next_turn(&self, token_tx: mpsc::Sender<String>) -> Result<()> {
         let history = self.contents.lock().await.clone();
+        let api_keys = auth::get_api_keys()?.into_iter().collect::<Vec<_>>();
+        if api_keys.is_empty() {
+            return Err(anyhow!("No Gemini API key is configured."));
+        }
 
+        let mut last_error = None;
+        let response_started = Arc::new(AtomicBool::new(false));
+        for (index, (name, api_key)) in api_keys.iter().enumerate() {
+            match self
+                .stream_with_key(
+                    &history,
+                    api_key,
+                    token_tx.clone(),
+                    response_started.clone(),
+                )
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    warn!("Gemini API key '{name}' failed: {error}");
+                    if response_started.load(Ordering::Relaxed) {
+                        return Err(error);
+                    }
+                    last_error = Some(error);
+                    if index + 1 < api_keys.len() {
+                        info!("Trying fallback API key '{}'", api_keys[index + 1].0);
+                    }
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "All configured Gemini API keys failed: {}",
+            last_error
+                .map(|error| error.to_string())
+                .unwrap_or_else(|| "no API keys are available".to_string())
+        ))
+    }
+
+    async fn stream_with_key(
+        &self,
+        history: &[Value],
+        api_key: &str,
+        token_tx: mpsc::Sender<String>,
+        response_started: Arc<AtomicBool>,
+    ) -> Result<()> {
         let body = json!({
             "contents": history,
             "generationConfig": {
@@ -216,9 +262,6 @@ impl ConversationSession {
                 "maxOutputTokens": 2048
             }
         });
-
-        let api_key =
-            auth::get_api_key()?.ok_or_else(|| anyhow!("No Gemini API key is configured."))?;
 
         // Fix SSE connection timeout: use connect_timeout instead of global request timeout
         let client = Client::builder()
@@ -238,7 +281,7 @@ impl ConversationSession {
             let req = client
                 .post(&url)
                 .header("Content-Type", "application/json")
-                .header("x-goog-api-key", &api_key)
+                .header("x-goog-api-key", api_key)
                 .json(&body);
 
             let res = match tokio::time::timeout(MODEL_RESPONSE_TIMEOUT, req.send()).await {
@@ -349,6 +392,7 @@ impl ConversationSession {
                     };
                     for text in texts {
                         full_accumulated.push_str(&text);
+                        response_started.store(true, Ordering::Relaxed);
                         let _ = token_tx.send(text).await;
                     }
                 }
@@ -371,6 +415,7 @@ impl ConversationSession {
                     };
                     for text in texts {
                         full_accumulated.push_str(&text);
+                        response_started.store(true, Ordering::Relaxed);
                         let _ = token_tx.send(text).await;
                     }
                 }

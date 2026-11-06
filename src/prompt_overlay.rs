@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const PROMPT_WIDTH: i32 = 380;
-const PROMPT_HEIGHT: i32 = 220;
+const PROMPT_HEIGHT: i32 = 300;
 const CURSOR_GAP: i32 = 18;
 const EDGE_PADDING: i32 = 12;
 
@@ -54,6 +54,7 @@ pub fn show_prompt_overlay<F, D>(
     app: &gtk4::Application,
     image: DynamicImage,
     cursor: (i32, i32),
+    opacity: f64,
     on_submit: F,
     on_dismiss: D,
 ) where
@@ -81,6 +82,7 @@ pub fn show_prompt_overlay<F, D>(
     window.set_title(Some("Ask about this capture"));
     window.set_default_size(prompt_width, prompt_height);
     window.set_decorated(false);
+    window.set_opacity(opacity);
     window.add_css_class("prompt-overlay");
     window.set_layer(Layer::Overlay);
     window.set_monitor(Some(&monitor));
@@ -107,11 +109,39 @@ pub fn show_prompt_overlay<F, D>(
     let composer = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     composer.add_css_class("prompt-composer");
 
-    let entry = gtk4::Entry::new();
+    let entry_scroll = gtk4::ScrolledWindow::new();
+    entry_scroll.add_css_class("prompt-entry-scroll");
+    entry_scroll.set_min_content_height(48);
+    entry_scroll.set_max_content_height(96);
+    entry_scroll.set_propagate_natural_height(true);
+    entry_scroll.set_hscrollbar_policy(gtk4::PolicyType::Never);
+    entry_scroll.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+    entry_scroll.set_overlay_scrolling(true);
+    entry_scroll.set_hexpand(true);
+
+    let entry = gtk4::TextView::new();
     entry.add_css_class("prompt-entry");
-    entry.set_placeholder_text(Some("Ask anything about this capture"));
-    entry.set_width_chars(1);
-    entry.set_hexpand(true);
+    entry.set_wrap_mode(gtk4::WrapMode::WordChar);
+    entry.set_accepts_tab(false);
+    entry.set_top_margin(8);
+    entry.set_bottom_margin(8);
+    entry.set_left_margin(0);
+    entry.set_right_margin(0);
+
+    let entry_overlay = gtk4::Overlay::new();
+    entry_overlay.set_child(Some(&entry));
+    let placeholder = gtk4::Label::new(Some("Ask anything about this capture"));
+    placeholder.add_css_class("prompt-entry-placeholder");
+    placeholder.set_halign(gtk4::Align::Start);
+    placeholder.set_valign(gtk4::Align::Start);
+    placeholder.set_margin_top(8);
+    placeholder.set_can_target(false);
+    entry_overlay.add_overlay(&placeholder);
+    entry_scroll.set_child(Some(&entry_overlay));
+    let placeholder_changed = placeholder.clone();
+    entry.buffer().connect_changed(move |buffer| {
+        placeholder_changed.set_visible(buffer.char_count() == 0);
+    });
 
     let send_icon = gtk4::Image::from_icon_name("document-send");
     send_icon.set_pixel_size(32);
@@ -119,7 +149,7 @@ pub fn show_prompt_overlay<F, D>(
     send_button.set_child(Some(&send_icon));
     send_button.add_css_class("prompt-send-button");
     send_button.set_tooltip_text(Some("Send question"));
-    composer.append(&entry);
+    composer.append(&entry_scroll);
     composer.append(&send_button);
     card.append(&composer);
     window.set_child(Some(&card));
@@ -131,7 +161,9 @@ pub fn show_prompt_overlay<F, D>(
     let submit_image = image.clone();
     let submit_callback = on_submit.clone();
     let submit = move || {
-        let question = submit_entry.text().trim().to_string();
+        let buffer = submit_entry.buffer();
+        let (start, end) = buffer.bounds();
+        let question = buffer.text(&start, &end, true).trim().to_string();
         if question.is_empty() {
             return;
         }
@@ -150,7 +182,19 @@ pub fn show_prompt_overlay<F, D>(
 
     let submit_button = submit.clone();
     send_button.connect_clicked(move |_| submit_button());
-    entry.connect_activate(move |_| submit());
+    let submit_key = submit.clone();
+    let submit_controller = gtk4::EventControllerKey::new();
+    submit_controller.connect_key_pressed(move |_, key, _, state| {
+        if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter)
+            && state.contains(gdk::ModifierType::CONTROL_MASK)
+        {
+            submit_key();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    entry.add_controller(submit_controller);
 
     let key_controller = gtk4::EventControllerKey::new();
     let key_window = window.downgrade();
