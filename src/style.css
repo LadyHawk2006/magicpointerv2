@@ -25,16 +25,16 @@ window.prompt-overlay.background {
 
 /* 2. MAIN CARD UI */
 .prompt-card {
-    color: #e8eaed;
-    background-color: #131314;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    color: @theme_fg_color;
+    background-color: @theme_bg_color;
+    border: 1px solid alpha(@theme_fg_color, 0.08);
     border-radius: 28px; /* Corners will now float perfectly */
     padding: 20px;
     box-shadow: none;
 }
 
 .prompt-preview {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: alpha(@theme_fg_color, 0.05);
     border: none; 
     border-radius: 16px;
     margin-bottom: 16px;
@@ -51,7 +51,7 @@ window.prompt-overlay.background {
 /* 3. INPUT ENTRY OVERRIDES */
 .prompt-entry,
 .prompt-entry > text {
-    color: #f8f9fa;
+    color: @theme_fg_color;
     background: none;
     background-color: transparent;
     border: none;
@@ -59,7 +59,7 @@ window.prompt-overlay.background {
     padding: 8px 0;
     font-size: 20px;
     font-weight: 400;
-    caret-color: #a8c7fa;
+    caret-color: @theme_selected_bg_color;
 }
 
 .prompt-entry:focus,
@@ -73,13 +73,13 @@ window.prompt-overlay.background {
 }
 
 .prompt-entry placeholder {
-    color: #80868b;
+    color: @insensitive_fg_color;
 }
 
 /* 4. SEND BUTTON OVERRIDES */
 .prompt-send-button {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.05);
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.05);
     border: none;
     border-radius: 50%;
     padding: 10px;
@@ -90,26 +90,26 @@ window.prompt-overlay.background {
 }
 
 .prompt-send-button:hover {
-    background-color: rgba(255, 255, 255, 0.12);
+    background-color: alpha(@theme_fg_color, 0.12);
 }
 
 /* Hyprland-managed chat window */
 window.background.card-window {
-    background-color: #121212;
-    color: #e0e0e0;
-    border: 1px solid #333333;
+    background-color: @theme_bg_color;
+    color: @theme_fg_color;
+    border: 1px solid alpha(@theme_fg_color, 0.16);
     border-radius: 16px;
 }
 
 .magic-card {
-    color: #e0e0e0;
-    background-color: #121212;
+    color: @theme_fg_color;
+    background-color: @theme_bg_color;
     border-radius: 16px;
 }
 
 .chat-history,
 .chat-history viewport {
-    background-color: #121212;
+    background-color: @theme_bg_color;
     border: none;
 }
 
@@ -124,8 +124,8 @@ window.background.card-window {
 }
 
 .chat-bubble-user {
-    color: #e0e0e0;
-    background-color: #222222;
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
     border: none;
     border-radius: 18px 18px 5px 18px;
     padding: 14px 18px;
@@ -135,12 +135,12 @@ window.background.card-window {
 
 .chat-bubble-user label,
 .chat-message-text {
-    color: #e0e0e0;
+    color: @theme_fg_color;
     font-size: 16px;
 }
 
 .chat-bubble-ai {
-    color: #f4f4f5;
+    color: @theme_fg_color;
     background-color: transparent;
     border: none;
     padding: 4px 2px;
@@ -158,7 +158,7 @@ window.background.card-window {
 .markdown-content,
 .markdown-paragraph,
 .markdown-list-item {
-    color: #e4e4e7; /* Slightly softer white for main text */
+    color: @theme_fg_color;
     font-weight: 400;
 }
 
@@ -178,7 +178,7 @@ window.background.card-window {
 
 /* Bold headers with improved spacing */
 .markdown-heading {
-    color: #ffffff;
+    color: @theme_fg_color;
     font-weight: 700;
     margin: 24px 0 12px;
 }
@@ -190,29 +190,29 @@ window.background.card-window {
 
 /* The main code block container */
 .code-card {
-    background-color: #09090b; /* Deep black for contrast */
-    border: 1px solid #27272a; /* Subtle structural border */
+    color: @theme_text_color;
+    background-color: @theme_base_color;
+    border: 1px solid alpha(@theme_fg_color, 0.16);
     border-radius: 12px;
     margin: 12px 0 20px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     transition: border-color 150ms ease;
 }
 
 .code-card:hover {
-    border-color: #3f3f46;
+    border-color: alpha(@theme_fg_color, 0.28);
 }
 
 /* Header of the code block */
 .code-toolbar {
     min-height: 38px;
-    background-color: #18181b; /* Slightly lighter than the code body */
-    border-bottom: 1px solid #27272a;
+    background-color: @theme_bg_color;
+    border-bottom: 1px solid alpha(@theme_fg_color, 0.16);
     border-radius: 12px 12px 0 0;
     padding: 4px 8px 4px 16px;
 }
 
 .code-language {
-    color: #a1a1aa;
+    color: @insensitive_fg_color;
     font-family: system-ui;
     font-size: 12px;
     font-weight: 600;
@@ -221,7 +221,7 @@ window.background.card-window {
 
 .code-copy-btn {
     background: transparent;
-    color: #a1a1aa;
+    color: @insensitive_fg_color;
     border: none;
     border-radius: 6px;
     padding: 6px 8px;
@@ -229,13 +229,13 @@ window.background.card-window {
 }
 
 .code-copy-btn:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
+    background-color: alpha(@theme_fg_color, 0.08);
+    color: @theme_fg_color;
 }
 
 /* The syntax highlighted source */
 .code-block-source {
-    color: #f4f4f5;
+    color: @theme_text_color;
     font-family: monospace;
     font-size: 15px;
     line-height: 1.4;
@@ -244,9 +244,9 @@ window.background.card-window {
 
 /* Styled Blockquotes */
 .markdown-blockquote {
-    color: #a1a1aa;
-    background-color: rgba(59, 130, 246, 0.05); /* Very subtle blue tint */
-    border-left: 4px solid #3b82f6; /* Accent blue to match your send button */
+    color: @theme_fg_color;
+    background-color: alpha(@theme_selected_bg_color, 0.06);
+    border-left: 4px solid @theme_selected_bg_color;
     border-radius: 0 8px 8px 0;
     padding: 8px 16px;
     margin: 12px 0;
@@ -254,7 +254,7 @@ window.background.card-window {
 }
 
 .markdown-rule {
-    background-color: #27272a;
+    background-color: alpha(@theme_fg_color, 0.16);
     min-height: 1px;
     margin: 24px 0;
 }
@@ -270,9 +270,9 @@ window.background.card-window {
 
 .prompt-preset-btn {
     min-height: 38px;
-    color: #e8eaed;
-    background-color: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.04);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
     border-radius: 999px;
     padding: 6px 16px;
     font-size: 13px;
@@ -281,13 +281,13 @@ window.background.card-window {
 }
 
 .prompt-preset-btn:hover {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
+    border-color: alpha(@theme_fg_color, 0.15);
 }
 
 .preset-icon {
-    color: #e8eaed;
+    color: @theme_fg_color;
     -gtk-icon-size: 16px;
 }
 
@@ -295,7 +295,7 @@ window.background.card-window {
     background-color: transparent;
     border: none;
     padding: 12px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid alpha(@theme_fg_color, 0.08);
 }
 
 .attachment-row {
@@ -318,7 +318,7 @@ window.background.card-window {
 
 .attachment-status,
 .message-attachment {
-    color: #808080;
+    color: @insensitive_fg_color;
     font-size: 11px;
 }
 
@@ -339,14 +339,14 @@ window.background.card-window {
 }
 
 .chat-entry {
-    color: #e0e0e0;
+    color: @theme_text_color;
     background-color: transparent;
     border: none;
     padding: 8px 6px;
     font-family: system-ui;
     font-size: 22px;
     font-weight: 500;
-    caret-color: #3b82f6;
+    caret-color: @theme_selected_bg_color;
 }
 
 .chat-entry,
@@ -354,7 +354,7 @@ window.background.card-window {
 .chat-entry:focus-within,
 .chat-entry > text,
 .chat-entry > text:focus {
-    color: #e0e0e0;
+    color: @theme_text_color;
     background: none;
     background-color: transparent;
     background-image: none;
@@ -368,14 +368,14 @@ window.background.card-window {
 }
 
 .chat-entry placeholder {
-    color: #808080;
+    color: @insensitive_fg_color;
     font-family: system-ui;
     font-size: 22px;
     font-weight: 500;
 }
 
 .capture-image-btn {
-    color: #808080;
+    color: @insensitive_fg_color;
     background-color: transparent;
     border: none;
     border-radius: 50%;
@@ -386,12 +386,12 @@ window.background.card-window {
 }
 
 .capture-image-btn:hover {
-    color: #e0e0e0;
-    background-color: rgba(255, 255, 255, 0.08);
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
 }
 
 .chat-send-btn {
-    color: #3b82f6;
+    color: @theme_selected_bg_color;
     background-color: transparent;
     border: none;
     border-radius: 50%;
@@ -402,12 +402,12 @@ window.background.card-window {
 }
 
 .chat-send-btn:hover {
-    color: #60a5fa;
+    color: @theme_selected_bg_color;
     background-color: transparent;
 }
 
 .response-copy {
-    color: #808080;
+    color: @insensitive_fg_color;
     background-color: transparent;
     border: none;
     border-radius: 50%;
@@ -417,8 +417,8 @@ window.background.card-window {
 }
 
 .response-copy:hover {
-    color: #e0e0e0;
-    background-color: rgba(255, 255, 255, 0.08);
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
 }
 
 .response-actions {

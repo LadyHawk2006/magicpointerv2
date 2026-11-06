@@ -1,0 +1,5 @@
+{
+  // GTK stylesheets use GTK-specific syntax that the built-in web CSS validator flags as invalid.
+  //But if you want to see the whole style.css highlighted in red, set this to true.
+  "css.validate": false
+}
