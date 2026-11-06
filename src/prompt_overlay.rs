@@ -219,7 +219,7 @@ pub fn show_prompt_overlay<F, D>(
     entry.grab_focus();
 }
 
-fn find_monitor(
+pub fn find_monitor(
     display: &gdk::Display,
     cursor: (i32, i32),
 ) -> Option<(gdk::Monitor, gdk::Rectangle)> {

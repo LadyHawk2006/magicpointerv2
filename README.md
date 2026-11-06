@@ -54,7 +54,10 @@ title, and user-entered context to requests.
 ### Screen selection and capture
 
 - Opens a fullscreen, transparent GTK Layer Shell surface for selection.
-- Drag to select a rectangular region; the selected area is highlighted.
+- Hover over any open window to automatically snap and spotlight its bounding
+  box with a title/dimensions pill; click to immediately capture the window.
+- Drag to select a custom rectangular region; the selected area is highlighted
+  with realtime dimensions.
 - Press **Escape** to cancel selection.
 - Captures the selected region through `libwayshot`, without writing the
   screenshot to a file as part of the capture flow.

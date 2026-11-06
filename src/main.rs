@@ -57,16 +57,37 @@ fn start_selection(
 
                     let (cursor, active_window_title, context_label) =
                         match hypr_ipc::get_hyprland_state() {
-                            Ok(state) => (
-                                state.cursor,
-                                state
-                                    .active_window
-                                    .as_ref()
-                                    .map(|window| window.title.clone()),
-                                state
-                                    .active_window
-                                    .map(|window| format!("{} ({})", window.class, window.title)),
-                            ),
+                            Ok(state) => {
+                                let matching_window = hypr_ipc::get_visible_windows()
+                                    .ok()
+                                    .and_then(|windows| {
+                                        windows.into_iter().find(|w| {
+                                            w.x == rect.x
+                                                && w.y == rect.y
+                                                && (w.width as u32) == rect.width
+                                                && (w.height as u32) == rect.height
+                                        })
+                                    });
+
+                                if let Some(target) = matching_window {
+                                    (
+                                        state.cursor,
+                                        Some(target.title.clone()),
+                                        Some(format!("{} ({})", target.class, target.title)),
+                                    )
+                                } else {
+                                    (
+                                        state.cursor,
+                                        state
+                                            .active_window
+                                            .as_ref()
+                                            .map(|window| window.title.clone()),
+                                        state
+                                            .active_window
+                                            .map(|window| format!("{} ({})", window.class, window.title)),
+                                    )
+                                }
+                            }
                             Err(error) => {
                                 warn!(
                                     "Could not query Hyprland cursor; placing prompt near selected region: {error}"
