@@ -5,7 +5,7 @@
 **Target Environment:** Arch Linux | Hyprland (Wayland)  
 **Core Goal:** Build an intent-aware, spatial desktop intelligence pipeline inspired by multimodal vision overlays (e.g., Google's Magic Pointer).
 
-The application is implemented in **Rust**. It queries compositor state via IPC, provides GTK4 Wayland layer-shell surfaces for selection and the cursor-adjacent prompt composer, captures visual bounding boxes directly from compositor buffers into RAM via `libwayshot`, and streams multimodal payloads to Gemini. The response is shown in a regular GTK window managed by Hyprland. OAuth browser launch and Secret Service keyring integration currently use desktop command-line utilities, so the complete application is not zero-subprocess.
+The application is implemented in **Rust**. It queries compositor state via IPC, provides GTK4 Wayland layer-shell surfaces for selection and the cursor-adjacent prompt composer, captures visual bounding boxes directly from compositor buffers into RAM via `libwayshot`, and streams multimodal payloads to Gemini. The response is shown in a regular GTK window managed by Hyprland. First-run setup guides users to Google AI Studio and stores Gemini API keys through the Secret Service keyring using `secret-tool`, so the complete application is not zero-subprocess.
 
 ---
 

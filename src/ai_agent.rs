@@ -1,4 +1,4 @@
-use crate::auth::AuthManager;
+use crate::auth;
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::StreamExt;
@@ -6,7 +6,6 @@ use image::DynamicImage;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::env;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -218,19 +217,8 @@ impl ConversationSession {
             }
         });
 
-        let auth_manager = AuthManager::new();
-        let (bearer_token, api_key) = if let Ok(token) = auth_manager.get_access_token().await {
-            (Some(token), None)
-        } else {
-            let key = env::var("GEMINI_API_KEY")
-                .or_else(|_| env::var("GOOGLE_API_KEY"))
-                .ok();
-            (None, key)
-        };
-
-        if bearer_token.is_none() && api_key.is_none() {
-            return Err(anyhow!("No authentication available."));
-        }
+        let api_key =
+            auth::get_api_key()?.ok_or_else(|| anyhow!("No Gemini API key is configured."))?;
 
         // Fix SSE connection timeout: use connect_timeout instead of global request timeout
         let client = Client::builder()
@@ -240,28 +228,18 @@ impl ConversationSession {
         let mut partial_response = String::new();
 
         for (i, &model_name) in MODELS_TO_TRY.iter().enumerate() {
-            let url = if let Some(ref key) = api_key {
-                format!(
-                    "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
-                    model_name, key
-                )
-            } else {
-                format!(
-                    "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
-                    model_name
-                )
-            };
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
+                model_name
+            );
 
             info!("Connecting to model: {}...", model_name);
 
-            let mut req = client
+            let req = client
                 .post(&url)
                 .header("Content-Type", "application/json")
+                .header("x-goog-api-key", &api_key)
                 .json(&body);
-
-            if let Some(ref bearer) = bearer_token {
-                req = req.header("Authorization", format!("Bearer {}", bearer));
-            }
 
             let res = match tokio::time::timeout(MODEL_RESPONSE_TIMEOUT, req.send()).await {
                 Err(_) => {

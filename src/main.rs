@@ -1,6 +1,8 @@
 use gtk4::gdk;
 use gtk4::prelude::*;
 use magicpointerv2::ai_agent::ConversationSession;
+use magicpointerv2::auth;
+use magicpointerv2::auth_setup;
 use magicpointerv2::hypr_ipc;
 use magicpointerv2::prompt_overlay;
 use magicpointerv2::screencapture;
@@ -21,6 +23,90 @@ fn load_custom_css() {
             gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
     }
+}
+
+fn start_selection(app: gtk4::Application, rt: Arc<tokio::runtime::Runtime>) {
+    info!("Opening spatial selection overlay...");
+
+    let app_handle = app.clone();
+    let app_dismiss = app.clone();
+    let rt_handle = rt.clone();
+
+    selection_overlay::show_selection_overlay(
+        &app,
+        move |rect: Rect| {
+            info!("Region selected: {:?}", rect);
+
+            match screencapture::capture_screen_region(rect.x, rect.y, rect.width, rect.height) {
+                Ok(image) => {
+                    info!(
+                        "Captured screen buffer ({}x{}) into RAM",
+                        image.width(),
+                        image.height()
+                    );
+
+                    let session = ConversationSession::new();
+
+                    let (cursor, context_label) = match hypr_ipc::get_hyprland_state() {
+                        Ok(state) => (
+                            state.cursor,
+                            state
+                                .active_window
+                                .map(|window| format!("{} ({})", window.class, window.title)),
+                        ),
+                        Err(error) => {
+                            warn!(
+                                "Could not query Hyprland cursor; placing prompt near selected region: {error}"
+                            );
+                            (
+                                (
+                                    rect.x.saturating_add(rect.width as i32),
+                                    rect.y.saturating_add(rect.height as i32),
+                                ),
+                                None,
+                            )
+                        }
+                    };
+
+                    let submit_app = app_handle.clone();
+                    let submit_session = session.clone();
+                    let submit_runtime = rt_handle.clone();
+                    let dismiss_app = app_handle.clone();
+                    prompt_overlay::show_prompt_overlay(
+                        &app_handle,
+                        image,
+                        cursor,
+                        move |prompt, image| {
+                            let chat_window = ui::build_floating_card(
+                                &submit_app,
+                                image,
+                                context_label,
+                                prompt,
+                                submit_session,
+                                submit_runtime,
+                            );
+
+                            let app_exit = submit_app.clone();
+                            chat_window.connect_destroy(move |_| {
+                                info!("Chat closed. Exiting process.");
+                                app_exit.quit();
+                            });
+                            chat_window.present();
+                        },
+                        move || dismiss_app.quit(),
+                    );
+                }
+                Err(error) => {
+                    error!("Screen capture error: {}", error);
+                    app_handle.quit();
+                }
+            }
+        },
+        move || {
+            info!("Selection dismissed/cancelled. Exiting process.");
+            app_dismiss.quit();
+        },
+    );
 }
 
 fn main() {
@@ -44,89 +130,32 @@ fn main() {
         load_custom_css();
     });
 
-    app.connect_activate(move |app| {
-        info!("Activated: opening spatial selection overlay immediately...");
-
-        let app_handle = app.clone();
-        let app_dismiss = app.clone();
-        let rt_handle = rt.clone();
-
-        selection_overlay::show_selection_overlay(
-            app,
-            move |rect: Rect| {
-                info!("Region selected: {:?}", rect);
-
-                match screencapture::capture_screen_region(rect.x, rect.y, rect.width, rect.height)
-                {
-                    Ok(image) => {
-                        info!(
-                            "Captured screen buffer ({}x{}) into RAM",
-                            image.width(),
-                            image.height()
-                        );
-
-                        let session = ConversationSession::new();
-
-                        let (cursor, context_label) = match hypr_ipc::get_hyprland_state() {
-                            Ok(state) => (
-                                state.cursor,
-                                state
-                                    .active_window
-                                    .map(|window| format!("{} ({})", window.class, window.title)),
-                            ),
-                            Err(error) => {
-                                warn!(
-                                    "Could not query Hyprland cursor; placing prompt near selected region: {error}"
-                                );
-                                (
-                                    (
-                                        rect.x.saturating_add(rect.width as i32),
-                                        rect.y.saturating_add(rect.height as i32),
-                                    ),
-                                    None,
-                                )
-                            }
-                        };
-
-                        let submit_app = app_handle.clone();
-                        let submit_session = session.clone();
-                        let submit_runtime = rt_handle.clone();
-                        let dismiss_app = app_handle.clone();
-                        prompt_overlay::show_prompt_overlay(
-                            &app_handle,
-                            image,
-                            cursor,
-                            move |prompt, image| {
-                                let chat_window = ui::build_floating_card(
-                                    &submit_app,
-                                    image,
-                                    context_label,
-                                    prompt,
-                                    submit_session,
-                                    submit_runtime,
-                                );
-
-                                let app_exit = submit_app.clone();
-                                chat_window.connect_destroy(move |_| {
-                                    info!("Chat closed. Exiting process.");
-                                    app_exit.quit();
-                                });
-                                chat_window.present();
-                            },
-                            move || dismiss_app.quit(),
-                        );
-                    }
-                    Err(e) => {
-                        error!("Screen capture error: {}", e);
-                        app_handle.quit();
-                    }
-                }
-            },
-            move || {
-                info!("Selection dismissed/cancelled. Exiting process.");
-                app_dismiss.quit();
-            },
-        );
+    app.connect_activate(move |app| match auth::get_api_key() {
+        Ok(Some(_)) => start_selection(app.clone(), rt.clone()),
+        Ok(None) => {
+            info!("No Gemini API key configured; opening first-run setup.");
+            let app_saved = app.clone();
+            let runtime_saved = rt.clone();
+            let app_cancelled = app.clone();
+            auth_setup::show_api_key_setup(
+                app,
+                None,
+                move || start_selection(app_saved.clone(), runtime_saved.clone()),
+                move || app_cancelled.quit(),
+            );
+        }
+        Err(error) => {
+            warn!("Could not access the system keyring: {error}");
+            let app_saved = app.clone();
+            let runtime_saved = rt.clone();
+            let app_cancelled = app.clone();
+            auth_setup::show_api_key_setup(
+                app,
+                Some(format!("{error:#}")),
+                move || start_selection(app_saved.clone(), runtime_saved.clone()),
+                move || app_cancelled.quit(),
+            );
+        }
     });
 
     app.run();

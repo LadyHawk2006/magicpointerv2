@@ -1,65 +1,72 @@
 use anyhow::{Result, anyhow};
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use tracing::{debug, info};
 
 const SERVICE_NAME: &str = "magicpointerv2";
-const ACCOUNT_NAME: &str = "google_oauth_refresh_token";
+const ACCOUNT_NAME: &str = "gemini_api_key";
 
-pub fn get_refresh_token() -> Option<String> {
+pub fn get_api_key() -> Result<Option<String>> {
     let output = Command::new("secret-tool")
         .args(["lookup", "service", SERVICE_NAME, "account", ACCOUNT_NAME])
-        .output()
-        .ok()?;
+        .output()?;
 
     if output.status.success() {
-        let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !token.is_empty() {
-            debug!("Retrieved OAuth refresh token from system keyring");
-            return Some(token);
+        let api_key = String::from_utf8(output.stdout)
+            .map_err(|error| anyhow!("API key in system keyring is not valid UTF-8: {error}"))?;
+        let api_key = api_key.trim();
+        if !api_key.is_empty() {
+            debug!("Retrieved Gemini API key from system keyring");
+            return Ok(Some(api_key.to_owned()));
         }
+        return Ok(None);
     }
-    None
+
+    let error = String::from_utf8_lossy(&output.stderr);
+    if output.status.code() == Some(1) && error.trim().is_empty() {
+        return Ok(None);
+    }
+
+    Err(anyhow!(
+        "Failed to read Gemini API key from system keyring: {}",
+        error.trim()
+    ))
 }
 
-pub fn store_refresh_token(token: &str) -> Result<()> {
-    use std::io::Write;
+pub fn store_api_key(api_key: &str) -> Result<()> {
+    if api_key.is_empty() {
+        return Err(anyhow!("Gemini API key cannot be empty"));
+    }
+
     let mut child = Command::new("secret-tool")
         .args([
             "store",
-            "--label=MagicPointer Google OAuth",
+            "--label=Magic Pointer Gemini API key",
             "service",
             SERVICE_NAME,
             "account",
             ACCOUNT_NAME,
         ])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(token.as_bytes())?;
-    }
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("Could not open input for the system keyring process"))?;
+    stdin.write_all(api_key.as_bytes())?;
+    drop(stdin);
 
-    let status = child.wait()?;
-    if status.success() {
-        info!("Saved Google OAuth refresh token securely in system keyring");
+    let output = child.wait_with_output()?;
+    if output.status.success() {
+        info!("Saved Gemini API key securely in system keyring");
         Ok(())
     } else {
         Err(anyhow!(
-            "Failed to store credentials in system keyring via secret-tool"
+            "Failed to save Gemini API key in system keyring: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
         ))
-    }
-}
-
-pub fn clear_credentials() -> Result<()> {
-    let status = Command::new("secret-tool")
-        .args(["clear", "service", SERVICE_NAME, "account", ACCOUNT_NAME])
-        .status()?;
-    if status.success() {
-        info!("Cleared credentials from system keyring");
-        Ok(())
-    } else {
-        Err(anyhow!("Failed to clear credentials from system keyring"))
     }
 }
