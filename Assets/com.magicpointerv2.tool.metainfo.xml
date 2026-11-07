@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.magicpointerv2.tool</id>
+  <name>Magic Pointer</name>
+  <summary>Ask Gemini about selected regions of your screen</summary>
+  <icon type="stock">com.magicpointerv2.tool</icon>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.ladyhawk2006">
+    <name>Lex</name>
+  </developer>
+  <description>
+    <p>
+      Magic Pointer is a user-triggered visual assistant for Wayland desktops
+      running Hyprland. Select a screen region, ask a question, and receive a
+      streamed response in a native GTK chat window.
+    </p>
+    <p>
+      Captures and follow-up images are kept in memory by the application and
+      sent to Google's Gemini API to generate responses. Users can annotate
+      captures, attach additional regions during a conversation, and configure
+      Gemini models, appearance, spatial context, and Hyprland window behavior.
+    </p>
+    <ul>
+      <li>Screen region selection with window snapping and multi-monitor support</li>
+      <li>In-memory Wayland screen capture and image annotation</li>
+      <li>Streaming multimodal Gemini conversations with additional image attachments</li>
+      <li>GTK settings for API keys, model fallback order, appearance, and request timeouts</li>
+      <li>Hyprland-managed response window placement and styling</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.magicpointerv2.tool.desktop</launchable>
+  <provides>
+    <binary>magicpointerv2</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <url type="homepage">https://github.com/LadyHawk2006/magicpointerv2</url>
+  <url type="vcs-browser">https://github.com/LadyHawk2006/magicpointerv2</url>
+  <url type="bugtracker">https://github.com/LadyHawk2006/magicpointerv2/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -3,6 +3,10 @@ name = "magicpointerv2"
 version = "0.1.0"
 edition = "2024"
 default-run = "magicpointerv2"
+description = "A Hyprland desktop assistant for asking Gemini about selected screen regions"
+license = "MIT"
+homepage = "https://github.com/LadyHawk2006/magicpointerv2"
+repository = "https://github.com/LadyHawk2006/magicpointerv2"
 
 [dependencies]
 tokio = { version = "1.43", features = ["full"] }

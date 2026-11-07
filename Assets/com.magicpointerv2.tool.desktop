@@ -1,0 +1,19 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Magic Pointer
+GenericName=Screen-aware AI Assistant
+Comment=Ask Gemini questions about selected areas of your screen
+Exec=magicpointerv2
+TryExec=magicpointerv2
+Icon=com.magicpointerv2.tool
+Terminal=false
+StartupNotify=true
+StartupWMClass=com.magicpointerv2.tool
+Categories=Utility;
+Keywords=AI;Gemini;Screenshot;Screen;Vision;Hyprland;Wayland;
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=Settings
+Exec=magicpointerv2 --settings

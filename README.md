@@ -302,6 +302,16 @@ git clone <repository-url>
 cd magicpointerv2
 ```
 
+### Desktop packaging metadata
+
+The [`Assets/`](./Assets/) directory
+contains the freedesktop launcher and AppStream component metadata. The
+launcher uses the themed icon name `com.magicpointerv2.tool`; the project icon
+artwork (`icon.png` and `icon.svg`) is not included yet and can be added there
+before packaging. Installers should install the icon under the
+`com.magicpointerv2.tool` icon name and place the desktop and metainfo files in
+the system's standard application and AppStream locations.
+
 Build and run the development version:
 
 ```sh
