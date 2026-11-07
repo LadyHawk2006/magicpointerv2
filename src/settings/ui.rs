@@ -1,7 +1,9 @@
-use crate::settings::{self, AppSettings};
-use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use gtk4::prelude::*;
+
+use crate::settings::{self, ApiKeyRecord, AppSettings};
 
 const AI_STUDIO_URL: &str = "https://aistudio.google.com/";
 
@@ -331,7 +333,7 @@ fn append_api_key_row(
     container: &gtk4::Box,
     rows: &Rc<RefCell<Vec<KeyRow>>>,
     status: &gtk4::Label,
-    record: settings::ApiKeyRecord,
+    record: ApiKeyRecord,
 ) {
     let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     let name = gtk4::Entry::new();

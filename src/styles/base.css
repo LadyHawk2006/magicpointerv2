@@ -1,0 +1,31 @@
+window.background.selection-window,
+.selection-canvas {
+    background: transparent;
+}
+
+/* 1. STRIP GTK DEFAULT WINDOW BACKGROUNDS & SHADOWS */
+window,
+window.background,
+window decoration,
+window decoration.background {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none; /* Kills default square shadow causing dark corners */
+}
+
+window.prompt-overlay,
+window.prompt-overlay.background {
+    background: none;
+    background-color: rgba(0, 0, 0, 0);
+    background-image: none;
+    border: none;
+    box-shadow: none;
+}
+
+window.auth-setup-window,
+window.auth-setup-window.background,
+.auth-setup-content {
+    color: @theme_fg_color;
+    background-color: @theme_bg_color;
+}

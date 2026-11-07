@@ -1,10 +1,15 @@
 use anyhow::{Context, Result, anyhow};
-use gtk4::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub mod appearance;
+pub mod context;
+pub mod ui;
+
+pub use appearance::apply_appearance;
+pub use context::compose_spatial_prompt;
 
 const SERVICE_NAME: &str = "magicpointerv2";
 const LEGACY_ACCOUNT_NAME: &str = "gemini_api_key";
@@ -334,202 +339,9 @@ fn clear_secret(account: &str) -> Result<()> {
     }
 }
 
-thread_local! {
-    static APPEARANCE_PROVIDERS: RefCell<Option<(gtk4::CssProvider, Option<gtk4::CssProvider>)>> = const { RefCell::new(None) };
-}
-
-pub fn apply_appearance(app: &gtk4::Application, settings: &AppSettings) -> Result<()> {
-    let Some(display) = gtk4::gdk::Display::default() else {
-        return Err(anyhow!("No display available while applying settings"));
-    };
-
-    let font_family = settings
-        .font_family
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace(['\n', '\r'], " ");
-    let mut css = format!(
-        ".markdown-content, .chat-message-text, .markdown-paragraph, .markdown-list-item, .markdown-heading, .markdown-h1, .markdown-h2, .markdown-h3, .markdown-h4, .markdown-h5, .markdown-h6 {{ font-family: \"{font_family}\"; font-size: {}pt; }} .chat-entry, .chat-entry placeholder {{ font-family: \"{font_family}\"; }}",
-        settings.font_size
-    );
-    if !settings.background_color.trim().is_empty() {
-        let color = settings.background_color.trim();
-        gtk4::gdk::RGBA::parse(color)
-            .map_err(|error| anyhow!("Invalid background color: {error}"))?;
-        css.push_str(&format!(
-            "window.background.card-window, .magic-card, .chat-history, .chat-history viewport {{ background-color: {color}; }}"
-        ));
-    }
-
-    let appearance = provider_from_css(&css)?;
-
-    let custom_css = if settings.custom_css_path.trim().is_empty() {
-        None
-    } else {
-        let path = Path::new(settings.custom_css_path.trim());
-        let css = fs::read_to_string(path)
-            .with_context(|| format!("Could not read custom GTK CSS from {}", path.display()))?;
-        Some(provider_from_css(&css).with_context(|| {
-            format!(
-                "Custom GTK CSS at {} contains invalid syntax",
-                path.display()
-            )
-        })?)
-    };
-
-    APPEARANCE_PROVIDERS.with(|providers| {
-        if let Some((old_appearance, old_custom)) = providers.borrow_mut().take() {
-            gtk4::style_context_remove_provider_for_display(&display, &old_appearance);
-            if let Some(old_custom) = old_custom {
-                gtk4::style_context_remove_provider_for_display(&display, &old_custom);
-            }
-        }
-        gtk4::style_context_add_provider_for_display(
-            &display,
-            &appearance,
-            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-        );
-        if let Some(provider) = custom_css.as_ref() {
-            gtk4::style_context_add_provider_for_display(
-                &display,
-                provider,
-                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
-            );
-        }
-        *providers.borrow_mut() = Some((appearance, custom_css));
-    });
-
-    for window in app.windows() {
-        if window.has_css_class("card-window") || window.has_css_class("prompt-overlay") {
-            window.set_opacity(settings.overlay_opacity);
-        }
-    }
-    Ok(())
-}
-
-fn provider_from_css(css: &str) -> Result<gtk4::CssProvider> {
-    let provider = gtk4::CssProvider::new();
-    let parse_error = std::rc::Rc::new(RefCell::new(None::<String>));
-    let parse_error_handler = parse_error.clone();
-    provider.connect_parsing_error(move |_, section, error| {
-        *parse_error_handler.borrow_mut() = Some(format!(
-            "{} at {}:{}",
-            error,
-            section.start_location().lines(),
-            section.start_location().chars()
-        ));
-    });
-    provider.load_from_data(css);
-    if let Some(error) = parse_error.borrow().as_ref() {
-        return Err(anyhow!("{error}"));
-    }
-    Ok(provider)
-}
-
-pub fn compose_spatial_prompt(
-    settings: &AppSettings,
-    active_window_title: Option<&str>,
-    prompt: &str,
-) -> String {
-    if !settings.spatial.enabled {
-        return prompt.to_string();
-    }
-
-    let mut context = Vec::new();
-    if settings.spatial.attach_hardware_info {
-        context.push(hardware_summary());
-    }
-    if settings.spatial.attach_active_window_title
-        && let Some(title) = active_window_title.filter(|title| !title.trim().is_empty())
-    {
-        context.push(format!("Active window: {}", title.trim()));
-    }
-    if !settings.spatial.custom_text.trim().is_empty() {
-        context.push(format!(
-            "User-provided context: {}",
-            settings.spatial.custom_text.trim()
-        ));
-    }
-    if context.is_empty() {
-        return prompt.to_string();
-    }
-
-    format!(
-        "Additional context:\n{}\n\nUser request:\n{}",
-        context.join("\n"),
-        prompt.trim()
-    )
-}
-
-fn hardware_summary() -> String {
-    let cpu = fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|contents| {
-            contents.lines().find_map(|line| {
-                line.split_once(':')
-                    .filter(|(key, _)| matches!(key.trim(), "model name" | "Hardware"))
-                    .map(|(_, value)| value.trim().to_string())
-            })
-        })
-        .unwrap_or_else(|| "unavailable".to_string());
-    let memory = fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|contents| {
-            contents.lines().find_map(|line| {
-                line.strip_prefix("MemTotal:")
-                    .and_then(|value| value.split_whitespace().next())
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .map(|kilobytes| format!("{} GiB", kilobytes / 1_048_576))
-            })
-        })
-        .unwrap_or_else(|| "unavailable".to_string());
-
-    format!(
-        "Hardware: {} {}, CPU: {}, Memory: {}",
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-        cpu,
-        memory
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ApiKeyRecord, AppSettings, compose_spatial_prompt};
-
-    #[test]
-    fn spatial_context_is_disabled_by_default() {
-        let settings = AppSettings::default();
-        assert_eq!(
-            compose_spatial_prompt(&settings, Some("Terminal"), "Explain this"),
-            "Explain this"
-        );
-    }
-
-    #[test]
-    fn spatial_context_attaches_selected_data_to_each_prompt() {
-        let mut settings = AppSettings::default();
-        settings.spatial.enabled = true;
-        settings.spatial.attach_active_window_title = true;
-        settings.spatial.custom_text = "  Project: Magic Pointer  ".to_string();
-
-        let prompt = compose_spatial_prompt(&settings, Some(" Terminal "), "  Explain this  ");
-        assert!(prompt.contains("Active window: Terminal"));
-        assert!(prompt.contains("User-provided context: Project: Magic Pointer"));
-        assert!(prompt.ends_with("User request:\nExplain this"));
-    }
-
-    #[test]
-    fn spatial_hardware_toggle_adds_local_hardware_summary() {
-        let mut settings = AppSettings::default();
-        settings.spatial.enabled = true;
-        settings.spatial.attach_hardware_info = true;
-
-        let prompt = compose_spatial_prompt(&settings, None, "Question");
-        assert!(prompt.contains("Hardware:"));
-        assert!(prompt.contains(std::env::consts::ARCH));
-        assert!(prompt.ends_with("User request:\nQuestion"));
-    }
+    use super::{ApiKeyRecord, AppSettings};
 
     #[test]
     fn settings_normalize_invalid_ranges() {

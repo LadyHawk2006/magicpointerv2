@@ -159,7 +159,7 @@ fn highlight_code_markup(code: &str, language: Option<&str>) -> String {
     markup
 }
 
-pub(crate) fn render_markdown(container: &gtk4::Box, markdown: &str) {
+pub fn render_markdown(container: &gtk4::Box, markdown: &str) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }

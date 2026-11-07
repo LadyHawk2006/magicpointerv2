@@ -1,0 +1,153 @@
+/* MAIN PROMPT CARD UI */
+.prompt-card {
+    color: @theme_fg_color;
+    background-color: @theme_bg_color;
+    border: 1px solid alpha(@theme_fg_color, 0.12);
+    border-radius: 20px;
+    padding: 16px 18px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+}
+
+.prompt-header-row {
+    margin-bottom: 12px;
+}
+
+.prompt-thumb-box {
+    border-radius: 10px;
+    border: 1px solid alpha(@theme_fg_color, 0.10);
+    overflow: hidden;
+    background-color: alpha(@theme_fg_color, 0.04);
+    cursor: pointer;
+}
+
+.prompt-preview {
+    background-color: transparent;
+    border: none;
+    border-radius: 10px;
+}
+
+.prompt-header-info {
+    margin-left: 12px;
+}
+
+.prompt-capture-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: @theme_fg_color;
+}
+
+.prompt-capture-subtitle {
+    font-size: 11px;
+    color: @insensitive_fg_color;
+    margin-bottom: 6px;
+}
+
+.prompt-annotate-btn {
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 6px;
+    background: alpha(@theme_fg_color, 0.05);
+    color: alpha(@theme_fg_color, 0.85);
+    border: 1px solid alpha(@theme_fg_color, 0.10);
+    transition: all 0.15s ease-in-out;
+}
+
+.prompt-annotate-btn:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.20);
+    color: @theme_selected_bg_color;
+    border-color: alpha(@theme_selected_bg_color, 0.45);
+}
+
+.prompt-clear-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 6px;
+    background: transparent;
+    color: @insensitive_fg_color;
+    border: none;
+    transition: all 0.15s ease;
+}
+
+.prompt-clear-btn:hover {
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
+}
+
+.prompt-chips-bar {
+    margin-top: 10px;
+}
+
+.prompt-chip {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 11px;
+    border-radius: 9999px;
+    background-color: alpha(@theme_fg_color, 0.04);
+    color: alpha(@theme_fg_color, 0.85);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
+    transition: all 0.15s ease-in-out;
+}
+
+.prompt-chip:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.22);
+    color: @theme_selected_bg_color;
+    border-color: alpha(@theme_selected_bg_color, 0.50);
+}
+
+.prompt-composer {
+    min-height: 50px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* INPUT ENTRY OVERRIDES */
+.prompt-entry-scroll,
+.prompt-entry-scroll > viewport {
+    background: transparent;
+    border: none;
+}
+
+.prompt-entry {
+    color: @theme_fg_color;
+    background: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    font-size: 20px;
+    font-weight: 400;
+    caret-color: @theme_selected_bg_color;
+}
+
+.prompt-entry:focus,
+.prompt-entry:focus-within {
+    background: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+.prompt-entry-placeholder {
+    color: @insensitive_fg_color;
+    font-size: 20px;
+}
+
+/* SEND BUTTON OVERRIDES */
+.prompt-send-button {
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.05);
+    border: none;
+    border-radius: 50%;
+    padding: 10px;
+    min-width: 40px;
+    min-height: 40px;
+    margin-left: 12px;
+    transition: background-color 0.2s ease;
+}
+
+.prompt-send-button:hover {
+    background-color: alpha(@theme_fg_color, 0.12);
+}

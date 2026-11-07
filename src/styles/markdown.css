@@ -1,0 +1,108 @@
+/* 5. MARKDOWN & CODE BLOCKS */
+.markdown-content {
+    font-family: system-ui;
+}
+
+.markdown-content,
+.markdown-paragraph,
+.markdown-list-item {
+    color: @theme_fg_color;
+    font-weight: 400;
+}
+
+.markdown-paragraph,
+.markdown-list-item {
+    font-size: 17px;
+    line-height: 1.5;
+}
+
+.markdown-paragraph {
+    margin: 0 0 16px;
+}
+
+.markdown-list-item {
+    margin: 6px 0;
+}
+
+/* Bold headers with improved spacing */
+.markdown-heading {
+    color: @theme_fg_color;
+    font-weight: 700;
+    margin: 24px 0 12px;
+}
+
+.markdown-h1 { font-size: 26px; }
+.markdown-h2 { font-size: 22px; }
+.markdown-h3 { font-size: 20px; }
+.markdown-h4, .markdown-h5, .markdown-h6 { font-size: 18px; }
+
+/* The main code block container */
+.code-card {
+    color: @theme_text_color;
+    background-color: @theme_base_color;
+    border: 1px solid alpha(@theme_fg_color, 0.16);
+    border-radius: 12px;
+    margin: 12px 0 20px;
+    transition: border-color 150ms ease;
+}
+
+.code-card:hover {
+    border-color: alpha(@theme_fg_color, 0.28);
+}
+
+/* Header of the code block */
+.code-toolbar {
+    min-height: 38px;
+    background-color: @theme_bg_color;
+    border-bottom: 1px solid alpha(@theme_fg_color, 0.16);
+    border-radius: 12px 12px 0 0;
+    padding: 4px 8px 4px 16px;
+}
+
+.code-language {
+    color: @insensitive_fg_color;
+    font-family: system-ui;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.code-copy-btn {
+    background: transparent;
+    color: @insensitive_fg_color;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 8px;
+    transition: all 150ms ease;
+}
+
+.code-copy-btn:hover {
+    background-color: alpha(@theme_fg_color, 0.08);
+    color: @theme_fg_color;
+}
+
+/* The syntax highlighted source */
+.code-block-source {
+    color: @theme_text_color;
+    font-family: monospace;
+    font-size: 15px;
+    line-height: 1.4;
+    padding: 16px;
+}
+
+/* Styled Blockquotes */
+.markdown-blockquote {
+    color: @theme_fg_color;
+    background-color: alpha(@theme_selected_bg_color, 0.06);
+    border-left: 4px solid @theme_selected_bg_color;
+    border-radius: 0 8px 8px 0;
+    padding: 8px 16px;
+    margin: 12px 0;
+    font-style: italic;
+}
+
+.markdown-rule {
+    background-color: alpha(@theme_fg_color, 0.16);
+    min-height: 1px;
+    margin: 24px 0;
+}

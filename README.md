@@ -502,35 +502,53 @@ magicpointerv2/
     ├── auth_setup.rs
     ├── executor.rs
     ├── hypr_ipc.rs
-    ├── markdown.rs
-    ├── prompt_overlay.rs
     ├── screencapture.rs
-    ├── selection_overlay.rs
-    ├── settings.rs
-    ├── settings_ui.rs
-    ├── style.css
-    ├── ui.rs
+    ├── prompt_overlay/
+    │   ├── mod.rs           ← show_prompt_overlay, chips, entry wiring
+    │   ├── annotation.rs    ← Annotation types, in-memory Cairo rasterization
+    │   ├── annotation_modal.rs ← 1280×720 annotation pop-up
+    │   └── position.rs      ← monitor lookup, edge-clamped placement
+    ├── selection_overlay/
+    │   ├── mod.rs           ← show_selection_overlay, event controller wiring
+    │   ├── geometry.rs      ← Rect, SelectionMode, snap/cycle helpers
+    │   └── render.rs        ← Cairo draw functions (badges, pills, brackets)
+    ├── settings/
+    │   ├── mod.rs           ← AppSettings, ApiKeyRecord, file I/O, Secret Service
+    │   ├── appearance.rs    ← apply_appearance, provider_from_css
+    │   ├── context.rs       ← compose_spatial_prompt, hardware_summary
+    │   └── ui.rs            ← GTK settings window and controls
+    ├── styles/
+    │   ├── mod.rs           ← APP_CSS bundle constant
+    │   ├── base.css         ← GTK window/background resets, transparency
+    │   ├── settings.css     ← Settings window and section styles
+    │   ├── prompt.css       ← Prompt card, chips, entry, send button
+    │   ├── annotation.css   ← Annotation modal scrim, tools, canvas
+    │   ├── chat.css         ← Chat window, bubbles, composer, attachments
+    │   └── markdown.css     ← Markdown typography and code-block styles
+    ├── ui/
+    │   ├── mod.rs           ← build_floating_card, ChatPreferences
+    │   ├── attachments.rs   ← Attachment preview helpers
+    │   ├── indicator.rs     ← Fetch-glow drawing and animation
+    │   └── markdown.rs      ← Markdown rendering and syntax highlighting
     └── bin/
         └── list_models.rs
 ```
 
-| File | Responsibility |
+| Path | Responsibility |
 |---|---|
 | `src/main.rs` | Application entry point, GTK startup, settings mode, first-run credential flow, and connection of selection, capture, prompt, and chat stages. |
-| `src/lib.rs` | Exposes the application modules used by the main binary and the model-listing utility. |
-| `src/selection_overlay.rs` | Fullscreen GTK Layer Shell selection surface, drag state, selected rectangle drawing, and Escape handling. |
-| `src/prompt_overlay.rs` | Positions and presents the cursor-adjacent prompt composer and capture preview. |
+| `src/lib.rs` | Re-exports all public modules; `settings_ui` and `markdown` are aliased for convenience. |
+| `src/prompt_overlay/` | Cursor-adjacent prompt composer: placement, thumbnail, quick-action chips, Enter/send, and in-memory annotation modal. |
+| `src/selection_overlay/` | Fullscreen GTK Layer Shell selection surface: freeform drag, window-snap, full-monitor mode, Tab cycling, edge magnetism. |
+| `src/settings/` | Persistent settings: model, file I/O, Secret Service keyring, appearance providers, spatial-context prompt composition, and GTK settings window. |
+| `src/styles/` | Modular GTK CSS files bundled at compile time into a single `APP_CSS` constant with no runtime disk reads. |
+| `src/ui/` | Floating chat window, Markdown renderer, attachment previews, fetch-glow indicator, composer, and chat actions. |
 | `src/screencapture.rs` | Captures a selected logical screen region as an in-memory `DynamicImage` through `libwayshot`. |
 | `src/hypr_ipc.rs` | Reads cursor position and active-window geometry/title/class from Hyprland. |
 | `src/ai_agent.rs` | In-memory conversation history, image encoding, Gemini HTTP requests, model/key fallback, and SSE parsing/streaming. |
 | `src/auth.rs` | Resolves environment and saved API keys and exposes key-saving behavior for setup. |
 | `src/auth_setup.rs` | First-run Google AI Studio guidance and API-key entry UI. |
-| `src/settings.rs` | Settings model, persistence, Secret Service access, appearance providers, and optional spatial-context composition. |
-| `src/settings_ui.rs` | Persistent settings window and controls for keys, appearance, and spatial intelligence. |
-| `src/ui.rs` | Floating chat window, attachment previews/removal, response streaming, fetching indicator, composer, and chat actions. |
-| `src/markdown.rs` | Markdown rendering and code-block presentation/highlighting. |
 | `src/executor.rs` | Clipboard text copy operation. |
-| `src/style.css` | GTK stylesheet for selection, prompt, setup, settings, and chat interfaces. |
 | `src/bin/list_models.rs` | Utility binary that calls Gemini's models endpoint using configured API keys and prints the response. |
 | `build.rs` | GTK4 Layer Shell linker configuration. |
 | `models.txt` | A saved model-list response snapshot; it is not loaded by the application. The active request fallback order is defined in `src/ai_agent.rs`. |

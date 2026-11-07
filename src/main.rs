@@ -17,7 +17,7 @@ use tracing::{error, info, warn};
 
 fn load_custom_css() {
     let css_provider = gtk4::CssProvider::new();
-    let css_data = include_str!("style.css");
+    let css_data = magicpointerv2::styles::APP_CSS;
     css_provider.load_from_data(css_data);
 
     if let Some(display) = gdk::Display::default() {

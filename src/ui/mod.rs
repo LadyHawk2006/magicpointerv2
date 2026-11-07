@@ -1,4 +1,13 @@
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::sync::Arc;
+
+use gtk4::gdk;
+use gtk4::glib;
+use gtk4::prelude::*;
+use image::DynamicImage;
+use tokio::sync::mpsc;
+use tracing::error;
 
 use crate::ai_agent::ConversationSession;
 use crate::executor;
@@ -6,15 +15,14 @@ use crate::screencapture;
 use crate::selection_overlay::{self, Rect};
 use crate::settings::{self, AppSettings};
 use crate::settings_ui;
-use gtk4::gdk;
-use gtk4::glib;
-use gtk4::prelude::*;
-use image::DynamicImage;
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
-use std::time::Duration;
-use tokio::sync::mpsc;
-use tracing::error;
+
+pub mod attachments;
+pub mod indicator;
+pub mod markdown;
+
+use attachments::{picture_for_image, refresh_attachment_previews, refresh_pending_attachment_previews};
+use indicator::{begin_fetch_indicator, draw_fetch_glow, finish_fetch_indicator};
+pub use markdown::render_markdown;
 
 pub struct ChatPreferences {
     pub active_window_title: Option<String>,
@@ -122,7 +130,7 @@ pub fn build_floating_card(
                     let raw_text = accumulated.borrow().clone();
                     *last_store.borrow_mut() = raw_text.clone();
 
-                    crate::markdown::render_markdown(&response, &raw_text);
+                    markdown::render_markdown(&response, &raw_text);
 
                     // Auto-scroll to bottom
                     if let Some(scr) = scrolled_weak.upgrade() {
@@ -131,7 +139,7 @@ pub fn build_floating_card(
                 }
 
                 if accumulated.borrow().is_empty() {
-                    crate::markdown::render_markdown(&response, "No response received.");
+                    markdown::render_markdown(&response, "No response received.");
                 }
                 finish_fetch_indicator(&fetch_count, &fetch_glow, &fetch_animation);
             });
@@ -437,181 +445,10 @@ pub fn build_floating_card(
     window
 }
 
-fn begin_fetch_indicator(
-    fetch_count: &Rc<Cell<usize>>,
-    glow: &gtk4::DrawingArea,
-    animation: &Rc<RefCell<Option<glib::SourceId>>>,
-    phase: &Rc<Cell<f64>>,
-) {
-    fetch_count.set(fetch_count.get() + 1);
-    glow.set_visible(true);
-
-    if animation.borrow().is_none() {
-        let is_fetching = fetch_count.clone();
-        let glow = glow.downgrade();
-        let phase = phase.clone();
-        let source = glib::timeout_add_local(Duration::from_millis(40), move || {
-            if is_fetching.get() == 0 {
-                return glib::ControlFlow::Break;
-            }
-
-            phase.set((phase.get() + 0.035) % std::f64::consts::TAU);
-            if let Some(glow) = glow.upgrade() {
-                glow.queue_draw();
-            }
-            glib::ControlFlow::Continue
-        });
-        *animation.borrow_mut() = Some(source);
-    }
-}
-
-fn finish_fetch_indicator(
-    fetch_count: &Rc<Cell<usize>>,
-    glow: &gtk4::DrawingArea,
-    animation: &Rc<RefCell<Option<glib::SourceId>>>,
-) {
-    let remaining = fetch_count.get().saturating_sub(1);
-    fetch_count.set(remaining);
-    if remaining == 0 {
-        glow.set_visible(false);
-        if let Some(source) = animation.borrow_mut().take() {
-            source.remove();
-        }
-    }
-}
-
-fn draw_fetch_glow(
-    context: &gtk4::cairo::Context,
-    width: i32,
-    height: i32,
-    phase: f64,
-) -> Result<(), gtk4::cairo::Error> {
-    if width <= 0 || height <= 0 {
-        return Ok(());
-    }
-
-    let pulse = 0.4 + 0.6 * ((phase.sin() + 1.0) / 2.0);
-    let phase_turns = phase / std::f64::consts::TAU;
-    let colors = [
-        (1.0, 0.08, 0.20),
-        (1.0, 0.48, 0.05),
-        (0.95, 0.92, 0.12),
-        (0.05, 0.88, 0.42),
-        (0.12, 0.48, 1.0),
-        (0.72, 0.18, 1.0),
-    ];
-    for (line_width, alpha) in [(12.0, 0.08), (7.0, 0.16), (2.0, 0.82)] {
-        let gradient = gtk4::cairo::LinearGradient::new(0.0, 0.5, width as f64, 0.5);
-        for step in 0..=60 {
-            let offset = step as f64 / 60.0;
-            let color_position = (offset + phase_turns).rem_euclid(1.0);
-            let palette_position = color_position * colors.len() as f64;
-            let color_index = palette_position.floor() as usize % colors.len();
-            let next_color = (color_index + 1) % colors.len();
-            let blend = palette_position.fract();
-            let color = (
-                colors[color_index].0 * (1.0 - blend) + colors[next_color].0 * blend,
-                colors[color_index].1 * (1.0 - blend) + colors[next_color].1 * blend,
-                colors[color_index].2 * (1.0 - blend) + colors[next_color].2 * blend,
-            );
-            gradient.add_color_stop_rgba(offset, color.0, color.1, color.2, alpha * pulse);
-        }
-
-        context.set_line_width(line_width);
-        context.set_line_cap(gtk4::cairo::LineCap::Round);
-        context.set_source(&gradient)?;
-        context.move_to(0.0, 0.5);
-        context.line_to(width as f64, 0.5);
-        context.stroke()?;
-    }
-    Ok(())
-}
-
-fn refresh_attachment_previews(container: &gtk4::Box, images: &[DynamicImage]) {
-    const PREVIEW_MIN_WIDTH: i32 = 96;
-    const PREVIEW_MIN_HEIGHT: i32 = 72;
-
-    while let Some(child) = container.first_child() {
-        container.remove(&child);
-    }
-
-    for image in images {
-        let preview = picture_for_image(image, PREVIEW_MIN_WIDTH, PREVIEW_MIN_HEIGHT);
-        preview.add_css_class("attachment-preview");
-        container.append(&preview);
-    }
-}
-
-fn refresh_pending_attachment_previews(
-    container: &gtk4::Box,
-    images: Rc<RefCell<Vec<DynamicImage>>>,
-    attachment_row: gtk4::Box,
-) {
-    while let Some(child) = container.first_child() {
-        container.remove(&child);
-    }
-
-    let image_count = images.borrow().len();
-    for index in 0..image_count {
-        let preview = gtk4::Overlay::new();
-        preview.add_css_class("pending-attachment-preview");
-        preview.set_child(Some(&picture_for_image(&images.borrow()[index], 96, 72)));
-
-        let remove_button = gtk4::Button::from_icon_name("window-close-symbolic");
-        remove_button.add_css_class("remove-attachment-button");
-        remove_button.set_tooltip_text(Some("Remove capture"));
-        remove_button.set_halign(gtk4::Align::End);
-        remove_button.set_valign(gtk4::Align::Start);
-        preview.add_overlay(&remove_button);
-
-        let pending_images = images.clone();
-        let previews = container.clone();
-        let attachment_row = attachment_row.clone();
-        remove_button.connect_clicked(move |_| {
-            let mut images = pending_images.borrow_mut();
-            if index < images.len() {
-                images.remove(index);
-            }
-            let is_empty = images.is_empty();
-            drop(images);
-            attachment_row.set_visible(!is_empty);
-            refresh_pending_attachment_previews(
-                &previews,
-                pending_images.clone(),
-                attachment_row.clone(),
-            );
-        });
-
-        container.append(&preview);
-    }
-}
-
 fn text_view_contents(text_view: &gtk4::TextView) -> String {
     let buffer = text_view.buffer();
     let (start, end) = buffer.bounds();
     buffer.text(&start, &end, true).to_string()
-}
-
-fn picture_for_image(image: &DynamicImage, max_width: i32, max_height: i32) -> gtk4::Picture {
-    let thumbnail = image
-        .thumbnail(max_width as u32, max_height as u32)
-        .to_rgba8();
-    let width = thumbnail.width();
-    let height = thumbnail.height();
-    let bytes = glib::Bytes::from_owned(thumbnail.into_raw());
-    let texture = gdk::MemoryTexture::new(
-        width as i32,
-        height as i32,
-        gdk::MemoryFormat::R8g8b8a8,
-        &bytes,
-        width as usize * 4,
-    );
-    let picture = gtk4::Picture::for_paintable(&texture);
-    picture.set_can_shrink(true);
-    picture.set_keep_aspect_ratio(true);
-    picture.set_size_request(max_width, max_height);
-    picture.set_overflow(gtk4::Overflow::Hidden);
-    picture
 }
 
 fn scroll_to_bottom(scrolled: &gtk4::ScrolledWindow) {
