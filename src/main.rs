@@ -200,6 +200,9 @@ fn main() {
         if let Err(error) = settings::apply_appearance(app, &settings_state.borrow()) {
             warn!("Could not apply all appearance settings: {error:#}");
         }
+        if let Err(error) = settings::hyprland::install(&settings_state.borrow()) {
+            warn!("Could not apply Hyprland window rules: {error:#}");
+        }
 
         if settings_mode {
             settings_ui::show_settings(app, settings_state);

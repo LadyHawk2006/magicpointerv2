@@ -133,14 +133,24 @@ Settings include:
 - Generation temperature, maximum output tokens, connection timeout,
   initial-response timeout, and stream-idle timeout.
 - Response font family and size.
-- Overlay opacity.
+- Prompt overlay opacity.
 - Optional chat background color.
 - Optional custom GTK CSS file.
+- Hyprland response-window width, height, position preset, border, shadow,
+  blur, glow, and opacity.
 - Spatial-intelligence controls for hardware details, active-window title, and
   user-provided context.
 
 Settings can be opened from the chat gear button or by launching the
-application with `--settings`.
+application with `--settings`. Sections are collapsible, with Gemini model
+management at the bottom of the settings list.
+
+The Hyprland window controls manage the regular response window, not the
+selection or prompt layer-shell surfaces. Position presets use the focused
+monitor's dimensions and reserved work area queried through Hyprland IPC when
+settings are saved. The generated move coordinates are saved in
+`~/.config/hypr/magicpointerv2.lua`; size and position changes apply to newly
+opened chat windows.
 
 ## How a request works
 
@@ -249,7 +259,8 @@ ordering flags.
 ### Runtime environment
 
 - Linux with a **Wayland** session.
-- **Hyprland** with its IPC sockets available to the user running the app.
+- **Hyprland 0.57.0 or compatible**, with its IPC sockets and Lua
+  configuration support available to the user running the app.
 - A compositor that supports the Wayland screen-capture protocol required by
   `libwayshot`; this project is currently developed and wired for Hyprland.
 - GTK4 and GTK4 Layer Shell runtime libraries.
@@ -317,19 +328,26 @@ On a normal launch, the application enters its screen-selection flow after
 settings and credentials have loaded. The first run opens API-key setup if no
 key can be found.
 
-### Optional Hyprland key binding
+### Hyprland integration and Home key
 
-The application does not install or manage compositor bindings. Users can bind
-their preferred command to the binary in their own Hyprland configuration. For
-example, a traditional Hyprland configuration can use:
+On startup, Magic Pointer creates or updates
+`~/.config/hypr/magicpointerv2.lua`, adds `require("magicpointerv2")` to the
+end of `~/.config/hypr/hyprland.lua` if it is not already present, and reloads
+Hyprland when either file changes. The chat sizing and placement rule matches
+only the **Magic Pointer** response window; the **Magic Pointer Settings**
+window has a separate centered rule and keeps its own fixed dimensions. The
+managed Lua module also contains this binding:
 
-```ini
-bind = SUPER, P, exec, /absolute/path/to/magicpointerv2
+```lua
+hl.bind("Home", hl.dsp.exec_cmd("magicpointerv2"))
 ```
 
-Use the configuration syntax supported by the installed Hyprland version. This
-example only launches the application; selection, capture, and chat are handled
-by the application itself.
+Launch `magicpointerv2` once from a terminal or application launcher to install
+the integration; afterward, press **Home** to launch the selection flow. The
+settings window rewrites the managed module from the selected options and
+reloads Hyprland. The main `hyprland.lua` file is preserved apart from adding
+the `require` line. The module is stored under `$XDG_CONFIG_HOME/hypr` when
+that variable is set, and `~/.config/hypr` otherwise.
 
 ## Gemini API key setup
 
@@ -582,6 +600,7 @@ magicpointerv2/
     │   ├── mod.rs           ← AppSettings, ApiKeyRecord, file I/O, Secret Service
     │   ├── appearance.rs    ← apply_appearance, provider_from_css
     │   ├── context.rs       ← compose_spatial_prompt, hardware_summary
+    │   ├── hyprland.rs      ← managed Lua rule, Home binding, monitor-based placement
     │   └── ui.rs            ← GTK settings window and controls
     ├── styles/
     │   ├── mod.rs           ← APP_CSS bundle constant
@@ -606,7 +625,7 @@ magicpointerv2/
 | `src/lib.rs` | Re-exports all public modules; `settings_ui` and `markdown` are aliased for convenience. |
 | `src/prompt_overlay/` | Cursor-adjacent prompt composer: placement, thumbnail, quick-action chips, Enter/send, and in-memory annotation modal. |
 | `src/selection_overlay/` | Fullscreen GTK Layer Shell selection surface: freeform drag, window-snap, full-monitor mode, Tab cycling, edge magnetism. |
-| `src/settings/` | Persistent settings: model, file I/O, Secret Service keyring, appearance providers, spatial-context prompt composition, and GTK settings window. |
+| `src/settings/` | Persistent settings: model, file I/O, Secret Service keyring, appearance providers, spatial-context prompt composition, Hyprland rule management, and GTK settings window. |
 | `src/styles/` | Modular GTK CSS files bundled at compile time into a single `APP_CSS` constant with no runtime disk reads. |
 | `src/ui/` | Floating chat window, Markdown renderer, attachment previews, fetch-glow indicator, composer, and chat actions. |
 | `src/screencapture.rs` | Captures a selected logical screen region as an in-memory `DynamicImage` through `libwayshot`. |

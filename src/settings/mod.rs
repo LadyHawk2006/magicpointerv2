@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod appearance;
 pub mod context;
+pub mod hyprland;
 pub mod ui;
 
 pub use appearance::apply_appearance;
@@ -44,6 +45,47 @@ pub struct SpatialSettings {
     pub custom_text: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum WindowPosition {
+    Center,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    #[default]
+    BottomRight,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct HyprlandWindowSettings {
+    pub width: u32,
+    pub height: u32,
+    pub position: WindowPosition,
+    pub show_border: bool,
+    pub border_size: u32,
+    pub show_shadow: bool,
+    pub blur: bool,
+    pub glow: bool,
+    pub opacity_percent: u32,
+}
+
+impl Default for HyprlandWindowSettings {
+    fn default() -> Self {
+        Self {
+            width: 542,
+            height: 668,
+            position: WindowPosition::default(),
+            show_border: false,
+            border_size: 2,
+            show_shadow: false,
+            blur: true,
+            glow: false,
+            opacity_percent: 95,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -61,6 +103,7 @@ pub struct AppSettings {
     pub background_color: String,
     pub custom_css_path: String,
     pub spatial: SpatialSettings,
+    pub hyprland_window: HyprlandWindowSettings,
 }
 
 impl Default for AppSettings {
@@ -83,6 +126,7 @@ impl Default for AppSettings {
             background_color: String::new(),
             custom_css_path: String::new(),
             spatial: SpatialSettings::default(),
+            hyprland_window: HyprlandWindowSettings::default(),
         }
     }
 }
@@ -270,6 +314,10 @@ impl AppSettings {
         self.connection_timeout_secs = self.connection_timeout_secs.clamp(1, 120);
         self.response_timeout_secs = self.response_timeout_secs.clamp(1, 300);
         self.stream_idle_timeout_secs = self.stream_idle_timeout_secs.clamp(1, 300);
+        self.hyprland_window.width = self.hyprland_window.width.clamp(200, 7680);
+        self.hyprland_window.height = self.hyprland_window.height.clamp(200, 4320);
+        self.hyprland_window.border_size = self.hyprland_window.border_size.clamp(1, 10);
+        self.hyprland_window.opacity_percent = self.hyprland_window.opacity_percent.clamp(25, 100);
 
         let mut seen_models = HashSet::new();
         self.model_order = self
@@ -498,6 +546,13 @@ mod tests {
         assert_eq!(settings.connection_timeout_secs, 12);
         assert_eq!(settings.response_timeout_secs, 20);
         assert_eq!(settings.stream_idle_timeout_secs, 20);
+        assert_eq!(settings.hyprland_window.width, 542);
+        assert_eq!(settings.hyprland_window.height, 668);
+        assert_eq!(settings.hyprland_window.opacity_percent, 95);
+        assert!(settings.hyprland_window.blur);
+        assert!(!settings.hyprland_window.show_border);
+        assert!(!settings.hyprland_window.show_shadow);
+        assert!(!settings.hyprland_window.glow);
     }
 
     #[test]

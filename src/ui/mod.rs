@@ -40,9 +40,12 @@ pub fn build_floating_card(
 ) -> gtk4::ApplicationWindow {
     let window = gtk4::ApplicationWindow::new(app);
     window.set_title(Some("Magic Pointer"));
-    window.set_default_size(537, 763);
+    {
+        let window_settings = &preferences.settings.borrow().hyprland_window;
+        window.set_default_size(window_settings.width as i32, window_settings.height as i32);
+    }
     window.set_decorated(false);
-    window.set_opacity(preferences.settings.borrow().overlay_opacity);
+    window.set_opacity(1.0);
 
     window.add_css_class("card-window");
 
@@ -71,6 +74,13 @@ pub fn build_floating_card(
 
     let toolbar = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     toolbar.add_css_class("chat-toolbar");
+    let close_button = gtk4::Button::from_icon_name("window-close-symbolic");
+    close_button.add_css_class("window-close-button");
+    close_button.set_tooltip_text(Some("Close chat and end this session"));
+    let close_window = window.clone();
+    close_button.connect_clicked(move |_| close_window.close());
+    toolbar.append(&close_button);
+
     let toolbar_spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     toolbar_spacer.set_hexpand(true);
     toolbar.append(&toolbar_spacer);

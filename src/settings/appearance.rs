@@ -73,7 +73,7 @@ pub fn apply_appearance(app: &gtk4::Application, settings: &AppSettings) -> Resu
     });
 
     for window in app.windows() {
-        if window.has_css_class("card-window") || window.has_css_class("prompt-overlay") {
+        if window.has_css_class("prompt-overlay") {
             window.set_opacity(settings.overlay_opacity);
         }
     }

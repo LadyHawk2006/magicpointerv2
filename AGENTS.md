@@ -22,6 +22,10 @@ The application currently:
 - Stores preferences and API-key metadata in JSON and API-key values in Secret
   Service using `secret-tool`. The app intentionally invokes that executable;
   it is not a zero-subprocess application.
+- Creates and updates a managed Hyprland Lua module for the chat-window rule
+  and Home key binding. It appends a `require("magicpointerv2")` line to the
+  user's `hyprland.lua` only when missing, and reloads Hyprland when managed
+  configuration changes.
 - Supports saved model attempt ordering, request-generation settings, and
   connection/response/stream-idle timeouts. Spatial hardware context reads the
   installed Linux distribution from os-release files instead of assuming
@@ -47,8 +51,8 @@ with code changes.
 - `src/ai_agent.rs` owns image encoding, in-memory conversation history,
   Gemini request/fallback behavior, and SSE parsing.
 - `src/settings/` owns settings persistence, Secret Service access, appearance,
-  opt-in spatial context, and settings UI. `src/auth.rs` resolves environment
-  and saved keys.
+  opt-in spatial context, Hyprland Lua generation/installation, and the
+  collapsible settings UI. `src/auth.rs` resolves environment and saved keys.
 - `src/styles/` bundles GTK CSS at compile time. The user-provided CSS setting
   is separate.
 
@@ -75,6 +79,16 @@ overlay.
   do not attach extra context unless the relevant settings enable it.
 - `models.txt` is a bundled model-picker catalog; the user's ordered model
   attempts and generation/timeout settings are persisted in `AppSettings`.
+- Hyprland response-window settings are persisted in `AppSettings`; position
+  presets are calculated from the focused monitor and its reserved work area
+  using Hyprland IPC. Keep the application-managed file
+  `$XDG_CONFIG_HOME/hypr/magicpointerv2.lua` (or
+  `~/.config/hypr/magicpointerv2.lua` when unset) synchronized with those
+  controls. Match chat sizing rules by initial title as well as application
+  class, and keep Settings in its separate centered rule.
+- Do not replace or rewrite unrelated user Hyprland configuration. The
+  integration only appends its own `require("magicpointerv2")` line when
+  missing; generated rule changes belong in `magicpointerv2.lua`.
 - Spatial context is opt-in. The detected OS name comes from `/etc/os-release`
   or `/usr/lib/os-release`; do not replace it with a fixed distribution name.
 - Keep documentation accurate: environment keys precede saved keys; saved
@@ -93,9 +107,10 @@ cargo test --all-targets
 
 The test suite includes unit tests for selection geometry, prompt positioning,
 settings normalization, model-catalog filtering, key ordering, OS-release
-parsing, spatial context, image preparation, and SSE parsing. UI execution and
-screen-capture validation require a graphical Wayland session with Hyprland,
-GTK4 Layer Shell, and the required screencopy protocol.
+parsing, spatial context, Hyprland rule/position generation, image preparation,
+and SSE parsing. UI execution and screen-capture validation require a graphical
+Wayland session with Hyprland, GTK4 Layer Shell, and the required screencopy
+protocol.
 
 Builds require a Rust toolchain supporting edition 2024, Cargo, a C toolchain,
 pkg-config, GTK4 and GTK4 Layer Shell development libraries, and the native

@@ -17,6 +17,22 @@ window.background.card-window {
     padding: 2px 8px 0;
 }
 
+.window-close-button {
+    color: alpha(@theme_fg_color, 0.58);
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 2px;
+    -gtk-icon-size: 13px;
+}
+
+.window-close-button:hover {
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
+}
+
 .chat-settings-button {
     color: @insensitive_fg_color;
     background: transparent;

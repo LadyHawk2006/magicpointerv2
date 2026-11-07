@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use gtk4::prelude::*;
 
-use crate::settings::{self, ApiKeyRecord, AppSettings};
+use crate::settings::{self, ApiKeyRecord, AppSettings, WindowPosition};
 
 const AI_STUDIO_URL: &str = "https://aistudio.google.com/";
 
@@ -20,13 +20,28 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
         .default_width(620)
         .default_height(760)
         .build();
+    window.set_resizable(false);
     window.add_css_class("settings-window");
 
     let root = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     root.add_css_class("settings-content");
+    let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    header.add_css_class("settings-header");
+    let close_button = gtk4::Button::from_icon_name("window-close-symbolic");
+    close_button.add_css_class("window-close-button");
+    close_button.set_tooltip_text(Some("Close settings"));
+    header.append(&close_button);
+    let title = gtk4::Label::new(Some("Settings"));
+    title.add_css_class("title-3");
+    title.set_xalign(0.0);
+    header.append(&title);
+    root.append(&header);
+
     let scrolled = gtk4::ScrolledWindow::new();
     scrolled.set_vexpand(true);
     scrolled.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+    scrolled.set_propagate_natural_width(false);
+    scrolled.set_propagate_natural_height(false);
     let content = gtk4::Box::new(gtk4::Orientation::Vertical, 18);
     content.set_margin_top(24);
     content.set_margin_bottom(20);
@@ -35,25 +50,21 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     scrolled.set_child(Some(&content));
     root.append(&scrolled);
 
-    let title = gtk4::Label::new(Some("Settings"));
-    title.add_css_class("title-2");
-    title.set_xalign(0.0);
-    content.append(&title);
-
     let status = gtk4::Label::new(None);
     status.set_wrap(true);
     status.set_xalign(0.0);
     status.add_css_class("settings-status");
     content.append(&status);
 
-    let request_section = section("Gemini request");
+    let (request_section, request_content) = collapsible_section("Gemini request", false);
+    let (model_section, model_content) = collapsible_section("Gemini model management", false);
     let model_note = gtk4::Label::new(Some(
         "Drag models to change fallback order. Models are tried in this order when the previous model is unavailable, rate-limited, overloaded, times out, or returns no text.",
     ));
     model_note.set_xalign(0.0);
     model_note.set_wrap(true);
     model_note.add_css_class("dim-label");
-    request_section.append(&model_note);
+    model_content.append(&model_note);
 
     let model_order = Rc::new(RefCell::new(shared.borrow().model_order.clone()));
     let model_rows = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
@@ -62,7 +73,7 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     model_rows_scroll.set_max_content_height(220);
     model_rows_scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
     model_rows_scroll.set_child(Some(&model_rows));
-    request_section.append(&model_rows_scroll);
+    model_content.append(&model_rows_scroll);
     rebuild_model_rows(&model_order, &model_rows, &status);
 
     let model_catalog = match settings::available_models() {
@@ -76,7 +87,14 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     let model_picker = gtk4::ComboBoxText::new();
     model_picker.set_hexpand(true);
     for (model_id, display_name) in &model_catalog {
-        model_picker.append(Some(model_id), &format!("{display_name} ({model_id})"));
+        model_picker.append(
+            Some(model_id),
+            &format!(
+                "{} ({})",
+                compact_model_label(display_name, 32),
+                compact_model_label(model_id, 28)
+            ),
+        );
     }
     if let Some((model_id, _)) = model_catalog.first() {
         model_picker.set_active_id(Some(model_id));
@@ -85,7 +103,7 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     add_model.set_sensitive(!model_catalog.is_empty());
     model_picker_row.append(&model_picker);
     model_picker_row.append(&add_model);
-    request_section.append(&model_picker_row);
+    model_content.append(&model_picker_row);
 
     let add_model_order = model_order.clone();
     let add_model_rows = model_rows.clone();
@@ -109,7 +127,7 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
 
     let max_output_tokens = gtk4::SpinButton::with_range(1.0, 65_536.0, 1.0);
     max_output_tokens.set_value(shared.borrow().max_output_tokens as f64);
-    request_section.append(&labeled_row(
+    request_content.append(&labeled_row(
         "Maximum output tokens",
         max_output_tokens.clone().upcast(),
     ));
@@ -117,43 +135,43 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     let temperature = gtk4::SpinButton::with_range(0.0, 2.0, 0.05);
     temperature.set_digits(2);
     temperature.set_value(shared.borrow().temperature);
-    request_section.append(&labeled_row(
+    request_content.append(&labeled_row(
         "Temperature (0–2)",
         temperature.clone().upcast(),
     ));
 
     let connection_timeout = gtk4::SpinButton::with_range(1.0, 120.0, 1.0);
     connection_timeout.set_value(shared.borrow().connection_timeout_secs as f64);
-    request_section.append(&labeled_row(
+    request_content.append(&labeled_row(
         "Connection timeout (seconds)",
         connection_timeout.clone().upcast(),
     ));
 
     let response_timeout = gtk4::SpinButton::with_range(1.0, 300.0, 1.0);
     response_timeout.set_value(shared.borrow().response_timeout_secs as f64);
-    request_section.append(&labeled_row(
+    request_content.append(&labeled_row(
         "Initial response timeout (seconds)",
         response_timeout.clone().upcast(),
     ));
 
     let stream_idle_timeout = gtk4::SpinButton::with_range(1.0, 300.0, 1.0);
     stream_idle_timeout.set_value(shared.borrow().stream_idle_timeout_secs as f64);
-    request_section.append(&labeled_row(
+    request_content.append(&labeled_row(
         "Stream idle timeout (seconds)",
         stream_idle_timeout.clone().upcast(),
     ));
     content.append(&request_section);
 
-    let key_section = section("Gemini API keys");
+    let (key_section, key_content) = collapsible_section("Gemini API keys", false);
     let key_note = gtk4::Label::new(Some(
         "Keys are stored in the system keyring. The primary key is tried first; the others are fallbacks.",
     ));
     key_note.set_xalign(0.0);
     key_note.set_wrap(true);
     key_note.add_css_class("dim-label");
-    key_section.append(&key_note);
+    key_content.append(&key_note);
     let key_rows_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-    key_section.append(&key_rows_box);
+    key_content.append(&key_rows_box);
     content.append(&key_section);
 
     let rows = Rc::new(RefCell::new(Vec::<KeyRow>::new()));
@@ -172,23 +190,23 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     key_entry_row.append(&new_key_name);
     key_entry_row.append(&new_key_value);
     key_entry_row.append(&add_key);
-    key_section.append(&key_entry_row);
+    key_content.append(&key_entry_row);
     let open_studio = gtk4::Button::with_label("Open Google AI Studio");
     open_studio.set_halign(gtk4::Align::Start);
-    key_section.append(&open_studio);
+    key_content.append(&open_studio);
 
-    let appearance_section = section("Appearance");
+    let (appearance_section, appearance_content) = collapsible_section("Appearance", false);
     let font_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
     font_row.append(&gtk4::Label::new(Some("Font family")));
     let font_family = gtk4::Entry::new();
     font_family.set_hexpand(true);
     font_family.set_text(&shared.borrow().font_family);
     font_row.append(&font_family);
-    appearance_section.append(&font_row);
+    appearance_content.append(&font_row);
 
     let font_size = gtk4::SpinButton::with_range(10.0, 40.0, 1.0);
     font_size.set_value(shared.borrow().font_size);
-    appearance_section.append(&labeled_row(
+    appearance_content.append(&labeled_row(
         "Response font size (pt)",
         font_size.clone().upcast(),
     ));
@@ -197,12 +215,12 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     opacity.set_value(shared.borrow().overlay_opacity);
     opacity.set_draw_value(true);
     opacity.set_digits(2);
-    appearance_section.append(&labeled_row("Overlay opacity", opacity.clone().upcast()));
+    appearance_content.append(&labeled_row("Overlay opacity", opacity.clone().upcast()));
 
     let background_color = gtk4::Entry::new();
     background_color.set_placeholder_text(Some("System theme default (or e.g. #202124)"));
     background_color.set_text(&shared.borrow().background_color);
-    appearance_section.append(&labeled_row(
+    appearance_content.append(&labeled_row(
         "Chat background",
         background_color.clone().upcast(),
     ));
@@ -215,13 +233,93 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     let load_css = gtk4::Button::with_label("Choose…");
     css_row.append(&custom_css);
     css_row.append(&load_css);
-    appearance_section.append(&labeled_row("Custom GTK CSS", css_row.upcast()));
+    appearance_content.append(&labeled_row("Custom GTK CSS", css_row.upcast()));
     content.append(&appearance_section);
 
-    let spatial_section = section("Spatial intelligence");
+    let (hyprland_section, hyprland_content) = collapsible_section("Hyprland chat window", true);
+    let hyprland_note = gtk4::Label::new(Some(
+        "These options manage the regular response window through ~/.config/hypr/magicpointerv2.lua. Position presets are calculated from the focused monitor via Hyprland IPC when settings are saved; the config is then reloaded.",
+    ));
+    hyprland_note.set_xalign(0.0);
+    hyprland_note.set_wrap(true);
+    hyprland_note.add_css_class("dim-label");
+    hyprland_content.append(&hyprland_note);
+
+    let initial_window_settings = shared.borrow().hyprland_window.clone();
+    let window_width = gtk4::SpinButton::with_range(200.0, 7680.0, 10.0);
+    window_width.set_value(initial_window_settings.width as f64);
+    hyprland_content.append(&labeled_row(
+        "Window width (px)",
+        window_width.clone().upcast(),
+    ));
+    let window_height = gtk4::SpinButton::with_range(200.0, 4320.0, 10.0);
+    window_height.set_value(initial_window_settings.height as f64);
+    hyprland_content.append(&labeled_row(
+        "Window height (px)",
+        window_height.clone().upcast(),
+    ));
+
+    let window_position = gtk4::ComboBoxText::new();
+    for (id, label) in [
+        ("center", "Center"),
+        ("top-left", "Top left"),
+        ("top-right", "Top right"),
+        ("bottom-left", "Bottom left"),
+        ("bottom-right", "Bottom right"),
+    ] {
+        window_position.append(Some(id), label);
+    }
+    window_position.set_active_id(Some(match initial_window_settings.position {
+        WindowPosition::Center => "center",
+        WindowPosition::TopLeft => "top-left",
+        WindowPosition::TopRight => "top-right",
+        WindowPosition::BottomLeft => "bottom-left",
+        WindowPosition::BottomRight => "bottom-right",
+    }));
+    hyprland_content.append(&labeled_row(
+        "Open position",
+        window_position.clone().upcast(),
+    ));
+
+    let show_border = gtk4::CheckButton::with_label("Show Hyprland border");
+    show_border.set_active(initial_window_settings.show_border);
+    hyprland_content.append(&show_border);
+    let border_size = gtk4::SpinButton::with_range(1.0, 10.0, 1.0);
+    border_size.set_value(initial_window_settings.border_size as f64);
+    border_size.set_sensitive(show_border.is_active());
+    hyprland_content.append(&labeled_row(
+        "Border width (px)",
+        border_size.clone().upcast(),
+    ));
+    let border_size_sensitive = border_size.clone();
+    show_border.connect_toggled(move |button| {
+        border_size_sensitive.set_sensitive(button.is_active());
+    });
+
+    let show_shadow = gtk4::CheckButton::with_label("Enable Hyprland shadow");
+    show_shadow.set_active(initial_window_settings.show_shadow);
+    hyprland_content.append(&show_shadow);
+    let blur = gtk4::CheckButton::with_label("Enable Hyprland blur");
+    blur.set_active(initial_window_settings.blur);
+    hyprland_content.append(&blur);
+    let glow = gtk4::CheckButton::with_label("Enable Hyprland glow");
+    glow.set_active(initial_window_settings.glow);
+    hyprland_content.append(&glow);
+
+    let hyprland_opacity = gtk4::Scale::with_range(gtk4::Orientation::Horizontal, 25.0, 100.0, 1.0);
+    hyprland_opacity.set_value(initial_window_settings.opacity_percent as f64);
+    hyprland_opacity.set_draw_value(true);
+    hyprland_opacity.set_digits(0);
+    hyprland_content.append(&labeled_row(
+        "Hyprland opacity (%)",
+        hyprland_opacity.clone().upcast(),
+    ));
+    content.append(&hyprland_section);
+
+    let (spatial_section, spatial_content) = collapsible_section("Spatial intelligence", false);
     let spatial_enabled = gtk4::CheckButton::with_label("Enable spatial intelligence");
     spatial_enabled.set_active(shared.borrow().spatial.enabled);
-    spatial_section.append(&spatial_enabled);
+    spatial_content.append(&spatial_enabled);
     let spatial_options = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
     spatial_options.set_margin_start(20);
     let hardware = gtk4::CheckButton::with_label("Attach hardware information");
@@ -243,13 +341,14 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     context_scroll.set_min_content_height(90);
     context_scroll.set_child(Some(&custom_context));
     spatial_options.append(&context_scroll);
-    spatial_section.append(&spatial_options);
+    spatial_content.append(&spatial_options);
     spatial_options.set_visible(spatial_enabled.is_active());
     let reveal_options = spatial_options.clone();
     spatial_enabled.connect_toggled(move |button| {
         reveal_options.set_visible(button.is_active());
     });
     content.append(&spatial_section);
+    content.append(&model_section);
 
     let footer = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     footer.set_margin_top(8);
@@ -333,6 +432,10 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
         }
     });
 
+    close_button.connect_clicked({
+        let window = window.clone();
+        move |_| window.close()
+    });
     close.connect_clicked({
         let window = window.clone();
         move |_| window.close()
@@ -373,6 +476,30 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
         draft.connection_timeout_secs = connection_timeout.value_as_int().max(1) as u64;
         draft.response_timeout_secs = response_timeout.value_as_int().max(1) as u64;
         draft.stream_idle_timeout_secs = stream_idle_timeout.value_as_int().max(1) as u64;
+        draft.hyprland_window.width = window_width.value_as_int().clamp(200, 7680) as u32;
+        draft.hyprland_window.height = window_height.value_as_int().clamp(200, 4320) as u32;
+        let Some(position) = window_position.active_id() else {
+            save_status.set_text("Choose a Hyprland chat-window position.");
+            return;
+        };
+        draft.hyprland_window.position = match position.as_str() {
+            "center" => WindowPosition::Center,
+            "top-left" => WindowPosition::TopLeft,
+            "top-right" => WindowPosition::TopRight,
+            "bottom-left" => WindowPosition::BottomLeft,
+            "bottom-right" => WindowPosition::BottomRight,
+            _ => {
+                save_status.set_text("Choose a valid Hyprland chat-window position.");
+                return;
+            }
+        };
+        draft.hyprland_window.show_border = show_border.is_active();
+        draft.hyprland_window.border_size = border_size.value_as_int().clamp(1, 10) as u32;
+        draft.hyprland_window.show_shadow = show_shadow.is_active();
+        draft.hyprland_window.blur = blur.is_active();
+        draft.hyprland_window.glow = glow.is_active();
+        draft.hyprland_window.opacity_percent =
+            hyprland_opacity.value().round().clamp(25.0, 100.0) as u32;
         draft.font_family = font_family.text().trim().to_string();
         if draft.font_family.is_empty() {
             save_status.set_text("Font family cannot be empty.");
@@ -391,8 +518,13 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
 
         match settings::apply_appearance(&save_app, &draft).and_then(|()| draft.save()) {
             Ok(()) => {
-                *save_shared.borrow_mut() = draft;
-                save_status.set_text("Settings saved.");
+                *save_shared.borrow_mut() = draft.clone();
+                match settings::hyprland::install(&draft) {
+                    Ok(()) => save_status.set_text("Settings saved; Hyprland integration is up to date."),
+                    Err(error) => save_status.set_text(&format!(
+                        "Settings were saved, but Hyprland integration could not be applied: {error:#}"
+                    )),
+                }
             }
             Err(error) => {
                 let restore_error =
@@ -627,14 +759,14 @@ fn append_api_key_row(
     });
 }
 
-fn section(title: &str) -> gtk4::Box {
+fn collapsible_section(title: &str, expanded: bool) -> (gtk4::Expander, gtk4::Box) {
+    let expander = gtk4::Expander::new(Some(title));
+    expander.add_css_class("settings-expander");
+    expander.set_expanded(expanded);
     let section = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
     section.add_css_class("settings-section");
-    let heading = gtk4::Label::new(Some(title));
-    heading.add_css_class("heading");
-    heading.set_xalign(0.0);
-    section.append(&heading);
-    section
+    expander.set_child(Some(&section));
+    (expander, section)
 }
 
 fn labeled_row(label: &str, widget: gtk4::Widget) -> gtk4::Box {
@@ -646,4 +778,26 @@ fn labeled_row(label: &str, widget: gtk4::Widget) -> gtk4::Box {
     widget.set_hexpand(true);
     row.append(&widget);
     row
+}
+
+fn compact_model_label(label: &str, max_chars: usize) -> String {
+    let mut chars = label.chars();
+    let compact = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{compact}…")
+    } else {
+        compact
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compact_model_label;
+
+    #[test]
+    fn model_picker_labels_are_compact() {
+        assert_eq!(compact_model_label("A longer model name", 8), "A longer…");
+        assert_eq!(compact_model_label("Short", 8), "Short");
+        assert_eq!(compact_model_label("Gemini", 0), "…");
+    }
 }

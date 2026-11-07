@@ -18,7 +18,7 @@ model, and does not automate interaction with other applications.
 
 The central interaction is explicit and user initiated:
 
-  1. Launch the application, commonly with a user-configured Hyprland hotkey.
+  1. Launch the application, commonly with the installed Hyprland Home binding.
   2. Choose a window, a freeform screen rectangle, or the full monitor.
   3. Optionally add visual markup to the capture.
   4. Enter a question or choose a quick-action prompt.
@@ -111,9 +111,17 @@ then follows the normal outbound JPEG preparation path.
 CHAT AND MULTI-TURN USE
 
 The answer appears in a regular, undecorated GTK application window rather
-than a layer-shell surface. Its initial size is 537 by 763 pixels, and it is
-intended to be managed and positioned by Hyprland. The application does not
-guarantee placement adjacent to the capture.
+than a layer-shell surface. Its default size is 542 by 668 logical pixels and
+its placement, opacity, border, shadow, blur, and glow are managed by a
+generated Hyprland Lua window rule. Settings can choose a size and center,
+top-left, top-right, bottom-left, or bottom-right placement. Corner coordinates
+are calculated from the focused monitor's dimensions and reserved work area via
+Hyprland IPC when settings are saved. The response window is not guaranteed to
+appear adjacent to the capture.
+
+The chat rule matches the response window by both application class and its
+initial title. The Settings window has a separate centered rule, so chat
+dimensions and corner coordinates cannot resize or push it beyond the monitor.
 
 The chat shows the initial capture, user prompts, and assistant responses.
 Responses stream into the UI as text arrives. Markdown is parsed and rendered
@@ -153,11 +161,19 @@ button also opens settings. The settings UI supports:
     connection timeout from 1 to 120 seconds, and both waiting timeouts from
     1 to 300 seconds.
   - Font family and response font size (normalized to 10 to 40 points).
-  - Overlay opacity (normalized to 0.25 to 1.0).
+  - Prompt overlay opacity (normalized to 0.25 to 1.0), separate from the
+    compositor-managed response-window opacity.
   - Optional chat background color.
   - Optional external GTK CSS file.
+  - Hyprland chat-window size, position, border width, shadow, blur, glow, and
+    opacity. Defaults are 542 by 668 pixels, bottom-right, no border, no
+    shadow, no glow, active blur, and 95 percent opacity.
   - Optional spatial-context additions: hardware summary, active-window title,
     and user-provided text.
+
+Settings sections are collapsible, and Gemini model management is the final
+section. Saving settings regenerates the managed Hyprland Lua module and
+reloads Hyprland. Size and position rules affect newly opened chat windows.
 
 Spatial intelligence is disabled by default. When enabled, selected context
 is composed into each submitted prompt; it is not an implicit screen scanner.
@@ -182,9 +198,14 @@ PROCESS STARTUP
 src/main.rs is the binary entry point. It initializes tracing, builds a
 multi-thread Tokio runtime, registers the GTK application ID
 com.magicpointerv2.tool, and loads the compiled-in CSS at GTK startup. On
-activation, settings are loaded and appearance preferences are applied. The
---settings argument selects the settings-only path. A normal run resolves API
-credentials and either opens first-run setup or begins screen selection.
+activation, settings are loaded, appearance preferences are applied, and the
+Hyprland integration is created or updated when needed. The integration
+creates $XDG_CONFIG_HOME/hypr/magicpointerv2.lua (or
+~/.config/hypr/magicpointerv2.lua when XDG_CONFIG_HOME is unset), adds
+require("magicpointerv2") to the end of the matching hyprland.lua once, and
+reloads Hyprland if either file changed. The --settings argument selects the
+settings-only path. A normal run resolves API credentials and either opens
+first-run setup or begins screen selection.
 
 The GTK application owns the UI and its event loop. GTK widgets and callbacks
 are constructed and manipulated on the GTK main thread. Asynchronous API
@@ -340,9 +361,10 @@ src/auth.rs and src/auth_setup.rs
 src/settings/
   mod.rs defines AppSettings and ApiKeyRecord, JSON persistence, keyring
   operations, normalization, model-catalog parsing, and primary/fallback
-  ordering. appearance.rs
-  applies font, opacity, background, and user CSS. context.rs composes the
-  opt-in spatial context. ui.rs creates and wires the GTK settings window.
+  ordering. appearance.rs applies font, prompt opacity, background, and user
+  CSS. context.rs composes opt-in spatial context. hyprland.rs uses Hyprland
+  IPC monitor geometry to render and install the response-window Lua rule and
+  Home binding. ui.rs creates and wires the collapsible GTK settings sections.
 
 src/ui/
   mod.rs builds the regular GTK chat window, attachment staging, message
@@ -423,7 +445,11 @@ Settings are stored at $XDG_CONFIG_HOME/magicpointerv2/settings.json, or
 contains preferences and API-key metadata (IDs and display names), not API-key
 values. It is written with user-only permissions and replaced via a temporary
 file and rename. It also stores the ordered model IDs, generation controls,
-and network timeout values. API key values are stored in the user's Secret
+network timeout values, and Hyprland chat-window settings. The managed Lua
+module is written to $XDG_CONFIG_HOME/hypr/magicpointerv2.lua, or
+~/.config/hypr/magicpointerv2.lua when XDG_CONFIG_HOME is unset; its require
+line is appended to the user's hyprland.lua only if absent. API key values are
+stored in the user's Secret
 Service keyring under the magicpointerv2 service label. This requires
 secret-tool and a working keyring provider. The application also supports the
 two API-key environment variables described above.
