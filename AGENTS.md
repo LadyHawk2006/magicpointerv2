@@ -52,9 +52,15 @@ with code changes.
   Gemini request/fallback behavior, and SSE parsing.
 - `src/settings/` owns settings persistence, Secret Service access, appearance,
   opt-in spatial context, Hyprland Lua generation/installation, and the
-  collapsible settings UI. `src/auth.rs` resolves environment and saved keys.
-- `src/styles/` bundles GTK CSS at compile time. The user-provided CSS setting
-  is separate.
+  collapsible settings UI. Appearance settings export a commented GTK CSS
+  template containing the effective bundled styles, current font/background
+  values, and any selected custom stylesheet, alongside a ready-to-load
+  `examplecss.css` sample theme. `src/auth.rs` resolves environment and saved
+  keys.
+- `src/styles/` bundles GTK CSS at compile time. `custom.css.template`
+  documents the styled components and serves as the source for the Settings
+  template export; `examplecss.css` is the exported sample theme. The
+  user-provided CSS setting remains separate.
 
 Keep GTK widget access on the GTK/GLib main thread. Run network work on the
 existing Tokio runtime and deliver response chunks to the UI through channels

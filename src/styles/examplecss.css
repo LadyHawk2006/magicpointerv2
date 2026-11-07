@@ -1,0 +1,161 @@
+/*
+ * Magic Pointer V2 example GTK theme: Aurora Night
+ *
+ * This is a ready-to-load sample theme, not a template. Choose this file in
+ * Settings > Appearance > Custom GTK CSS to apply the dark navy, violet, and
+ * teal treatment. Change the palette below to experiment.
+ */
+
+@define-color mp-example-bg #111827;
+@define-color mp-example-surface #182235;
+@define-color mp-example-raised #202d43;
+@define-color mp-example-fg #e7edf7;
+@define-color mp-example-muted #9aa9bd;
+@define-color mp-example-accent #a78bfa;
+@define-color mp-example-teal #5eead4;
+@define-color mp-example-border #34445d;
+
+window.background.card-window,
+.magic-card,
+.chat-history,
+.chat-history viewport,
+window.settings-window,
+window.settings-window.background,
+.settings-content,
+window.auth-setup-window,
+.auth-setup-content {
+    color: @mp-example-fg;
+    background-color: @mp-example-bg;
+}
+
+.prompt-card,
+.annotation-modal-card,
+.settings-section,
+.settings-expander > title,
+.code-card {
+    color: @mp-example-fg;
+    background-color: @mp-example-surface;
+    border: 1px solid @mp-example-border;
+}
+
+.prompt-card,
+.annotation-modal-card,
+.code-card {
+    border-radius: 16px;
+}
+
+.chat-toolbar,
+.chat-composer {
+    background-color: @mp-example-bg;
+}
+
+.chat-composer {
+    border-top: 1px solid @mp-example-border;
+}
+
+.chat-bubble-user,
+.chat-entry-shell,
+.prompt-chip,
+.prompt-preset-btn,
+.prompt-annotate-btn,
+.annotation-tool-pill {
+    color: @mp-example-fg;
+    background-color: @mp-example-raised;
+    border: 1px solid @mp-example-border;
+}
+
+.chat-bubble-user {
+    border-radius: 18px 18px 5px 18px;
+}
+
+.chat-entry-shell:focus-within,
+.prompt-chip:hover,
+.prompt-preset-btn:hover,
+.prompt-annotate-btn:hover,
+.annotation-tool-pill:hover {
+    background-color: alpha(@mp-example-accent, 0.18);
+    border-color: @mp-example-accent;
+}
+
+.prompt-chip:hover,
+.prompt-preset-btn:hover,
+.prompt-annotate-btn:hover,
+.annotation-tool-pill.active {
+    color: @mp-example-accent;
+}
+
+.prompt-send-button,
+.chat-send-btn,
+.settings-status,
+.annotation-done-btn {
+    color: @mp-example-teal;
+}
+
+.annotation-done-btn {
+    background-color: @mp-example-raised;
+    border: 1px solid alpha(@mp-example-teal, 0.55);
+    border-radius: 8px;
+}
+
+.prompt-capture-subtitle,
+.chat-entry-placeholder,
+.prompt-entry-placeholder,
+.code-language,
+.settings-header .window-close-button,
+.chat-settings-button,
+.response-copy {
+    color: @mp-example-muted;
+}
+
+.chat-message-text,
+.markdown-content,
+.markdown-paragraph,
+.markdown-list-item,
+.markdown-heading,
+.markdown-h1,
+.markdown-h2,
+.markdown-h3,
+.markdown-h4,
+.markdown-h5,
+.markdown-h6 {
+    color: @mp-example-fg;
+}
+
+.markdown-h1,
+.markdown-h2,
+.markdown-h3,
+.markdown-h4,
+.markdown-h5,
+.markdown-h6 {
+    color: @mp-example-accent;
+}
+
+.code-card,
+.code-block-source {
+    color: @mp-example-fg;
+    background-color: @mp-example-surface;
+}
+
+.code-toolbar {
+    background-color: @mp-example-raised;
+    border-bottom: 1px solid @mp-example-border;
+}
+
+.markdown-blockquote {
+    color: @mp-example-fg;
+    background-color: alpha(@mp-example-accent, 0.1);
+    border-left: 4px solid @mp-example-accent;
+}
+
+.markdown-rule {
+    background-color: @mp-example-border;
+}
+
+.window-close-button:hover,
+.chat-settings-button:hover,
+.response-copy:hover,
+.prompt-clear-btn:hover,
+.remove-attachment-button:hover {
+    background-color: alpha(@mp-example-accent, 0.18);
+    color: @mp-example-fg;
+}

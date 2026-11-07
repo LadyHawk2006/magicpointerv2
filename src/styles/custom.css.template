@@ -1,0 +1,245 @@
+/*
+ * MAGIC POINTER V2 GTK THEME TEMPLATE
+ * Generated from the application's current built-in CSS and saved appearance
+ * settings. If a custom stylesheet was already selected in Settings, its
+ * complete contents are included at the end of this file.
+ * The export also creates examplecss.css in the same folder. That file is a
+ * ready-to-load sample theme; this file is the detailed starting point for
+ * building a custom theme.
+ *
+ * HOW TO USE
+ * 1. Save this file and make a copy before experimenting.
+ * 2. Edit the CUSTOM THEME OVERRIDES section at the end, or edit the active
+ *    declarations above it.
+ * 3. In Magic Pointer Settings > Appearance, select the edited file and save.
+ * 4. GTK CSS is not browser CSS. It supports GTK selectors, GTK color names,
+ *    and GTK-specific properties; browser variables such as var(--color) are
+ *    not supported.
+ *
+ * COLOR NAMES USED BY THE BUILT-IN THEME
+ * These names are provided by the active GTK theme and are used throughout
+ * the included application styles. They are not definitions owned by this
+ * file:
+ *   @theme_fg_color            Main foreground/text color.
+ *   @theme_bg_color            Main application surface color.
+ *   @theme_text_color          Text-view and code text color.
+ *   @theme_base_color          Base color for code blocks and input surfaces.
+ *   @insensitive_fg_color      Muted, disabled, or secondary text color.
+ *   @theme_selected_bg_color   Accent/selection background color.
+ *   @theme_selected_fg_color   Foreground color on the selection accent.
+ *
+ * GTK CSS has no portable custom-property mechanism. The optional mp-* colors
+ * below are GTK @define-color aliases that make a small theme palette easier
+ * to use in your own overrides. Change their values to colors supported by
+ * GTK, for example #202124, rgb(32, 33, 36), or rgba(32, 33, 36, 0.95).
+ *
+ * COMPONENT INDEX
+ *
+ * General surfaces and settings:
+ *   window.background.selection-window, .selection-canvas
+ *     Transparent full-screen selection surface and its drawing canvas.
+ *   window, window.background, window decoration.background
+ *     Remove GTK's default window fill, square border, and shadow.
+ *   window.prompt-overlay and its background
+ *     Transparent cursor-adjacent prompt window.
+ *   window.auth-setup-window and .auth-setup-content
+ *     First-run API-key setup window.
+ *   window.settings-window and .settings-content
+ *     Settings window and its scrollable content.
+ *   .settings-header, .settings-header .window-close-button
+ *     Settings title row and quiet top-left close control.
+ *   .settings-section, .settings-expander > title,
+ *   .settings-expander > title label
+ *     Collapsible settings section body, header, and header text.
+ *   .settings-status
+ *     Success, warning, or error feedback in Settings.
+ *
+ * Prompt composer:
+ *   .prompt-card
+ *     Main prompt surface, padding, border, background, and corner radius.
+ *   .prompt-header-row, .prompt-thumb-box, .prompt-preview
+ *     Capture thumbnail row, clickable thumbnail frame, and image.
+ *   .prompt-header-info, .prompt-capture-title, .prompt-capture-subtitle
+ *     Capture information layout, title, and dimensions text.
+ *   .prompt-annotate-btn, .prompt-clear-btn and their :hover states
+ *     Annotation and clear controls in the prompt header.
+ *   .prompt-chips-bar, .prompt-chip and .prompt-chip:hover
+ *     Quick-action chip row and chip interaction state.
+ *   .prompt-composer, .prompt-entry-scroll > viewport, .prompt-entry,
+ *   .prompt-entry:focus-within
+ *     Prompt input row, scroller, entry text, and focus treatment.
+ *   .prompt-entry-placeholder
+ *     Hint shown while the prompt entry is empty.
+ *   .prompt-send-button and :hover
+ *     Prompt submit control.
+ *
+ * Annotation surface:
+ *   window.annotation-modal-scrim and its background
+ *     Dark translucent full-screen backdrop.
+ *   .annotation-modal-card
+ *     Annotation window content surface.
+ *   .annotation-modal-header, .annotation-modal-title
+ *     Modal header spacing and title.
+ *   .annotation-modal-subtitle
+ *     Image dimensions shown below the title.
+ *   .annotation-tool-pill, :hover, .active
+ *     Pen, Arrow, Box, and Clear tool buttons and their states.
+ *   .annotation-done-btn and :hover
+ *     Finish/return-to-prompt action.
+ *   .annotation-canvas-container
+ *     Frame around the image annotation canvas.
+ *
+ * Chat window:
+ *   window.background.card-window, .magic-card
+ *     Main response window and inner card.
+ *   .chat-toolbar
+ *     Top row containing close and settings buttons.
+ *   .window-close-button and :hover
+ *     Quiet top-left close control. The settings header has a more-specific
+ *     equivalent selector so both windows share the same close-button class.
+ *   .chat-settings-button and :hover
+ *     Gear button that opens Settings.
+ *   .chat-history, .chat-history viewport, .chat-messages
+ *     Scrollable conversation history and message spacing.
+ *   .initial-capture
+ *     Image attached to the initial request.
+ *   .chat-bubble-user
+ *     User message bubble.
+ *   .chat-message-text
+ *     Text inside rendered messages.
+ *   .chat-bubble-ai
+ *     Assistant response container.
+ *   .prompt-presets, .prompt-preset-btn, :hover, .preset-icon
+ *     Suggested prompts shown in the conversation.
+ *   .chat-composer-overlay, .chat-composer
+ *     Bottom input surface and its overlay.
+ *   .chat-fetch-glow
+ *     Animated activity highlight during a request.
+ *   .attachment-row, .attachment-previews, .message-image-previews
+ *     Pending and sent image attachment layout.
+ *   .attachment-preview, .pending-attachment-preview
+ *     Captured-image preview sizing and shape.
+ *   .remove-attachment-button and :hover
+ *     Remove control on a pending attachment.
+ *   .chat-input-bar, .chat-entry-shell and :focus-within
+ *     Message input row and its focus treatment.
+ *   .chat-entry-scroll > viewport, .chat-entry, .chat-entry:focus-within
+ *     Scrolling text input, text style, and focus resets.
+ *   .chat-entry-placeholder
+ *     Hint shown while the chat input is empty.
+ *   .capture-image-btn and :hover
+ *     Add another screen capture.
+ *   .chat-send-btn and :hover
+ *     Send a follow-up message.
+ *   .response-copy and :hover, .response-actions
+ *     Copy response/code actions and their layout.
+ *
+ * Markdown and code:
+ *   .markdown-content
+ *     Base response typography.
+ *   .markdown-paragraph, .markdown-list-item
+ *     Paragraph and list typography, line height, and spacing.
+ *   .markdown-heading, .markdown-h1 through .markdown-h6
+ *     Heading weight, spacing, and level-specific size.
+ *   .code-card and :hover
+ *     Code block container and hover border.
+ *   .code-toolbar, .code-language
+ *     Code block header and language label.
+ *   .code-copy-btn and :hover
+ *     Copy-code action.
+ *   .code-block-source
+ *     Monospace source text, line height, and padding.
+ *   .markdown-blockquote
+ *     Quoted response text.
+ *   .markdown-rule
+ *     Horizontal divider in a response.
+ *
+ * Color customization notes:
+ *   The rules below intentionally show the exact built-in CSS bundled by this
+ *   application at export time, except for GTK-unsupported declarations that
+ *   GTK ignores and would reject when this file is loaded as custom CSS. The
+ *   running application applies your selected custom stylesheet after its
+ *   bundled and settings-generated styles, so equal-specificity declarations
+ *   here can override the built-in values.
+ *   The final example section uses mp-* aliases for optional color overrides.
+ */
+
+/* Optional user-editable GTK theme palette. */
+@define-color mp-background @theme_bg_color;
+@define-color mp-foreground @theme_fg_color;
+@define-color mp-text @theme_text_color;
+@define-color mp-base @theme_base_color;
+@define-color mp-muted @insensitive_fg_color;
+@define-color mp-accent @theme_selected_bg_color;
+@define-color mp-accent-foreground @theme_selected_fg_color;
+
+/* BEGIN: built-in application styles at export time */
+{{BUILT_IN_STYLES}}
+/* END: built-in application styles */
+
+/* BEGIN: active Appearance settings at export time
+ * Includes the saved response font family/size and optional chat background.
+ */
+{{ACTIVE_APPEARANCE}}
+/* END: active Appearance settings */
+
+/* BEGIN: existing selected custom stylesheet, if any
+ * This is copied verbatim so the export preserves the currently loaded custom
+ * CSS as well as the bundled app styles.
+ */
+{{EXISTING_CUSTOM_STYLES}}
+/* END: existing selected custom stylesheet */
+
+/* CUSTOM THEME OVERRIDES
+ *
+ * Add new GTK CSS rules below these examples. Remove the comment markers and
+ * change the values to apply an override. Prefer the app-specific selectors
+ * documented in the component index above to keep changes scoped.
+ *
+ * Example: recolor main app surfaces and text:
+ *
+ * window.background.card-window,
+ * .magic-card,
+ * .prompt-card,
+ * .annotation-modal-card,
+ * window.settings-window {
+ *     color: @mp-foreground;
+ *     background-color: @mp-background;
+ * }
+ *
+ * Example: recolor the quick-action buttons:
+ *
+ * .prompt-chip,
+ * .prompt-preset-btn {
+ *     color: @mp-foreground;
+ *     background-color: alpha(@mp-accent, 0.12);
+ *     border-color: alpha(@mp-accent, 0.35);
+ * }
+ *
+ * Example: use the accent color for interactive states:
+ *
+ * .prompt-chip:hover,
+ * .prompt-annotate-btn:hover,
+ * .annotation-tool-pill.active {
+ *     color: @mp-accent;
+ *     border-color: @mp-accent;
+ * }
+ *
+ * Example: style response code blocks:
+ *
+ * .code-card {
+ *     color: @mp-text;
+ *     background-color: @mp-base;
+ *     border-color: alpha(@mp-foreground, 0.24);
+ * }
+ *
+ * GTK NOTES
+ * - Use GTK-supported properties; CSS Grid, browser pseudo-elements, and
+ *   browser custom properties are not available.
+ * - GTK CSS values such as @theme_fg_color and alpha(color, opacity) are GTK
+ *   syntax, not browser CSS syntax.
+ * - The chat window's outer size, compositor opacity, blur, border, shadow,
+ *   glow, and position are controlled by Hyprland settings, not GTK CSS.
+ * - GTK CSS cannot change the image pixels drawn by the selection or
+ *   annotation Cairo canvases.
+ */

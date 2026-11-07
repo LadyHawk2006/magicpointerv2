@@ -165,6 +165,10 @@ button also opens settings. The settings UI supports:
     compositor-managed response-window opacity.
   - Optional chat background color.
   - Optional external GTK CSS file.
+  - Export of two GTK CSS theme files to a chosen folder:
+    magicpointerv2-custom.css is the detailed, commented template, including
+    the bundled application styles, current font/background settings, and
+    selected custom stylesheet; examplecss.css is a ready-to-load sample theme.
   - Hyprland chat-window size, position, border width, shadow, blur, glow, and
     opacity. Defaults are 542 by 668 pixels, bottom-right, no border, no
     shadow, no glow, active blur, and 95 percent opacity.
@@ -362,9 +366,12 @@ src/settings/
   mod.rs defines AppSettings and ApiKeyRecord, JSON persistence, keyring
   operations, normalization, model-catalog parsing, and primary/fallback
   ordering. appearance.rs applies font, prompt opacity, background, and user
-  CSS. context.rs composes opt-in spatial context. hyprland.rs uses Hyprland
-  IPC monitor geometry to render and install the response-window Lua rule and
-  Home binding. ui.rs creates and wires the collapsible GTK settings sections.
+  CSS and exports a detailed theme template plus examplecss.css. The template
+  reflects effective styles and appearance settings; the example file is a
+  ready-to-load Aurora Night GTK theme. context.rs composes opt-in spatial
+  context. hyprland.rs uses Hyprland IPC monitor geometry to render and install
+  the response-window Lua rule and Home binding. ui.rs creates and wires the
+  collapsible GTK settings sections.
 
 src/ui/
   mod.rs builds the regular GTK chat window, attachment staging, message
@@ -375,9 +382,13 @@ src/ui/
 
 src/styles/
   Modular GTK CSS for base surfaces, settings, prompt composer, annotation
-  modal, chat, and Markdown/code presentation. styles/mod.rs bundles the
-  stylesheets at compile time. The app does not load its built-in styles from
-  runtime files; an optional user-selected GTK CSS file is a separate setting.
+  modal, chat, and Markdown/code presentation. The commented
+  custom.css.template documents component selectors and provides theme
+  override examples; Settings exports it with current appearance values and
+  optional selected custom CSS, alongside the ready-to-load examplecss.css
+  theme. styles/mod.rs bundles the stylesheets at compile time. The app does
+  not load its built-in styles from runtime files; an optional user-selected
+  GTK CSS file is a separate setting.
 
 src/bin/list_models.rs
   Developer utility for querying the available Gemini models endpoint.

@@ -460,6 +460,11 @@ fallbacks.
   `#202124`. Leave it blank to use the system theme's background.
 - **Custom GTK CSS** loads a CSS file from a user-selected path. This is GTK
   CSS, not browser/Web CSS; some syntax and properties are GTK-specific.
+- **Export CSS theme files** saves two files to a chosen folder:
+  `magicpointerv2-custom.css` is the commented template with built-in styles,
+  current font/background settings, and the selected custom stylesheet (if
+  any); `examplecss.css` is a ready-to-load sample theme. The template
+  documents the app's styled components and includes GTK CSS override examples.
 
 Appearance is based on GTK theme colors when no custom background overrides
 them, so the app follows the active system GTK theme to the extent provided by
@@ -598,12 +603,13 @@ magicpointerv2/
     │   └── render.rs        ← Cairo draw functions (badges, pills, brackets)
     ├── settings/
     │   ├── mod.rs           ← AppSettings, ApiKeyRecord, file I/O, Secret Service
-    │   ├── appearance.rs    ← apply_appearance, provider_from_css
+    │   ├── appearance.rs    ← Apply appearance, export CSS theme template
     │   ├── context.rs       ← compose_spatial_prompt, hardware_summary
     │   ├── hyprland.rs      ← managed Lua rule, Home binding, monitor-based placement
     │   └── ui.rs            ← GTK settings window and controls
     ├── styles/
     │   ├── mod.rs           ← APP_CSS bundle constant
+    │   ├── custom.css.template ← Commented GTK theme template source
     │   ├── base.css         ← GTK window/background resets, transparency
     │   ├── settings.css     ← Settings window and section styles
     │   ├── prompt.css       ← Prompt card, chips, entry, send button

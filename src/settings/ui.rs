@@ -234,6 +234,9 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     css_row.append(&custom_css);
     css_row.append(&load_css);
     appearance_content.append(&labeled_row("Custom GTK CSS", css_row.upcast()));
+    let export_css = gtk4::Button::with_label("Export CSS theme files…");
+    export_css.set_halign(gtk4::Align::Start);
+    appearance_content.append(&export_css);
     content.append(&appearance_section);
 
     let (hyprland_section, hyprland_content) = collapsible_section("Hyprland chat window", true);
@@ -394,6 +397,60 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
             {
                 path_entry.set_text(&path.to_string_lossy());
                 status_label.set_text("CSS path selected. Save settings to load it.");
+            }
+            dialog.destroy();
+        });
+        dialog.show();
+    });
+
+    let export_window = window.clone();
+    let export_status = status.clone();
+    let export_shared = shared.clone();
+    let export_font_family = font_family.clone();
+    let export_font_size = font_size.clone();
+    let export_background = background_color.clone();
+    let export_custom_css = custom_css.clone();
+    export_css.connect_clicked(move |_| {
+        let dialog = gtk4::FileChooserNative::new(
+            Some("Choose a folder for the CSS theme files"),
+            Some(&export_window),
+            gtk4::FileChooserAction::SelectFolder,
+            Some("Export"),
+            Some("Cancel"),
+        );
+        let status_label = export_status.clone();
+        let settings_state = export_shared.clone();
+        let font_family = export_font_family.clone();
+        let font_size = export_font_size.clone();
+        let background = export_background.clone();
+        let custom_css = export_custom_css.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk4::ResponseType::Accept {
+                let result = (|| {
+                    let file = dialog
+                        .file()
+                        .ok_or_else(|| anyhow::anyhow!("No export folder was selected"))?;
+                    let directory = file.path().ok_or_else(|| {
+                        anyhow::anyhow!("The export folder is not a local directory")
+                    })?;
+                    let mut current_settings = settings_state.borrow().clone();
+                    current_settings.font_family = font_family.text().trim().to_string();
+                    current_settings.font_size = font_size.value();
+                    current_settings.background_color = background.text().trim().to_string();
+                    current_settings.custom_css_path = custom_css.text().trim().to_string();
+                    settings::appearance::write_css_export(&directory, &current_settings)
+                })();
+
+                match result {
+                    Ok((template_path, example_path)) => status_label.set_text(&format!(
+                        "Exported {} and {}.",
+                        template_path.display(),
+                        example_path.display()
+                    )),
+                    Err(error) => {
+                        status_label.set_text(&format!("Could not export CSS files: {error:#}"))
+                    }
+                }
             }
             dialog.destroy();
         });
