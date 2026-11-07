@@ -408,6 +408,89 @@ pub fn settings_path() -> Result<PathBuf> {
         .join("settings.json"))
 }
 
+pub fn reset_app_data() -> Result<()> {
+    let mut failures = Vec::new();
+
+    if let Err(error) = clear_app_secrets() {
+        failures.push(format!("Secret Service credentials: {error:#}"));
+    }
+    if let Err(error) = remove_saved_settings() {
+        failures.push(format!("saved settings: {error:#}"));
+    }
+    if let Err(error) = hyprland::reset() {
+        failures.push(format!("Hyprland integration: {error:#}"));
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Reset was incomplete:\n- {}",
+            failures.join("\n- ")
+        ))
+    }
+}
+
+fn clear_app_secrets() -> Result<()> {
+    let output = std::process::Command::new("secret-tool")
+        .args(["clear", "service", SERVICE_NAME])
+        .output()
+        .context("Could not run secret-tool; install libsecret's command-line utilities")?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Secret Service rejected credential removal: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+fn remove_saved_settings() -> Result<()> {
+    let path = settings_path()?;
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("Could not remove {}", path.display()));
+        }
+    }
+
+    let Some(directory) = path.parent() else {
+        return Err(anyhow!("Settings path has no parent directory"));
+    };
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Could not inspect {}", directory.display()));
+        }
+    };
+
+    for entry in entries {
+        let entry = entry.with_context(|| format!("Could not inspect {}", directory.display()))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("settings.json.") && name.ends_with(".tmp") {
+            fs::remove_file(entry.path())
+                .with_context(|| format!("Could not remove {}", entry.path().display()))?;
+        }
+    }
+    match fs::remove_dir(directory) {
+        Ok(()) => {}
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("Could not remove {}", directory.display()));
+        }
+    }
+    Ok(())
+}
+
 fn key_account(id: &str) -> String {
     format!("gemini_api_key_{id}")
 }

@@ -11,6 +11,7 @@ use magicpointerv2::settings::{self, AppSettings};
 use magicpointerv2::settings_ui;
 use magicpointerv2::ui::{self, ChatPreferences};
 use std::cell::RefCell;
+use std::io::Write;
 use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -154,6 +155,34 @@ fn start_selection(
 
 fn main() {
     tracing_subscriber::fmt::init();
+    if std::env::args_os().any(|arg| arg == "--reset") {
+        eprintln!(
+            "This removes Magic Pointer settings, its Secret Service credentials, and its managed Hyprland integration."
+        );
+        eprint!("Type RESET to continue: ");
+        if let Err(error) = std::io::stderr().flush() {
+            eprintln!("Could not display confirmation prompt: {error}");
+            std::process::exit(1);
+        }
+        let mut confirmation = String::new();
+        if let Err(error) = std::io::stdin().read_line(&mut confirmation) {
+            eprintln!("Could not read confirmation: {error}");
+            std::process::exit(1);
+        }
+        if confirmation.trim() != "RESET" {
+            println!("Reset cancelled.");
+            return;
+        }
+        match settings::reset_app_data() {
+            Ok(()) => println!("Magic Pointer data and Hyprland integration were reset."),
+            Err(error) => {
+                eprintln!("{error:#}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
     info!("Launching magicpointerv2 chat assistant...");
 
     let tokio_rt = Arc::new(

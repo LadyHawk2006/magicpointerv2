@@ -210,6 +210,13 @@ require("magicpointerv2") to the end of the matching hyprland.lua once, and
 reloads Hyprland if either file changed. The --settings argument selects the
 settings-only path. A normal run resolves API credentials and either opens
 first-run setup or begins screen selection.
+The --reset argument requires the user to type RESET before it removes app
+settings, Magic Pointer Secret Service credentials, the managed Hyprland Lua
+module, and only the app's require line from hyprland.lua. It reloads Hyprland
+when that line was removed. Settings offers the same confirmed action and exits
+after a successful reset. Exported CSS, environment variables, unrelated
+Hyprland configuration, and arbitrary user files are preserved. Chat history
+and screenshots are not persisted by the app.
 
 The GTK application owns the UI and its event loop. GTK widgets and callbacks
 are constructed and manipulated on the GTK main thread. Asynchronous API
@@ -464,6 +471,12 @@ stored in the user's Secret
 Service keyring under the magicpointerv2 service label. This requires
 secret-tool and a working keyring provider. The application also supports the
 two API-key environment variables described above.
+
+The explicit --reset operation and Settings reset action remove the settings
+file, all Secret Service entries tagged with the magicpointerv2 service,
+magicpointerv2.lua, and the exact require("magicpointerv2") line from the
+user's hyprland.lua. The main Hyprland file is otherwise preserved. Custom CSS
+files and other user files are not app-owned and are not deleted.
 
 During use, capture buffers, markup, and conversation history remain in
 process memory. To answer a request, the selected image or images and user

@@ -324,6 +324,24 @@ cargo run -- --settings
 ./target/release/magicpointerv2 --settings
 ```
 
+Reset the app to its first-run state:
+
+```sh
+cargo run -- --reset
+# or, after a release build:
+./target/release/magicpointerv2 --reset
+```
+
+The command asks you to type `RESET` before it proceeds. It removes the
+Magic Pointer settings file and app-owned Secret Service credentials, deletes
+`magicpointerv2.lua`, removes only the exact `require("magicpointerv2")` line
+from `hyprland.lua`, and reloads Hyprland if that line was removed. It does not
+change other Hyprland configuration, environment variables (including Gemini
+API-key variables), exported CSS themes, or unrelated user files.
+There is no persisted chat history or screenshot data to remove. The same
+confirmed action is available through **Reset app data…** at the bottom of
+Settings.
+
 On a normal launch, the application enters its screen-selection flow after
 settings and credentials have loaded. The first run opens API-key setup if no
 key can be found.

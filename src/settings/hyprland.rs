@@ -77,6 +77,70 @@ pub fn install(settings: &AppSettings) -> Result<()> {
     Ok(())
 }
 
+pub fn reset() -> Result<()> {
+    let config_dir = hyprland_config_dir()?;
+    let main_config = config_dir.join("hyprland.lua");
+    let module_path = config_dir.join("magicpointerv2.lua");
+
+    let require_removed = remove_module_require(&main_config).with_context(|| {
+        format!(
+            "Could not remove Magic Pointer from {}",
+            main_config.display()
+        )
+    })?;
+    let module_removed = match fs::remove_file(&module_path) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Could not remove {}", module_path.display()));
+        }
+    };
+
+    if require_removed || module_removed {
+        let output = Command::new("hyprctl").arg("reload").output().context(
+            "Could not run `hyprctl reload` to remove Magic Pointer's Hyprland integration",
+        )?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Magic Pointer's Hyprland files were removed, but Hyprland rejected the reload: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+    }
+
+    tracing::info!(
+        require_removed,
+        module_removed,
+        "Removed Magic Pointer Hyprland integration"
+    );
+    Ok(())
+}
+
+fn remove_module_require(path: &Path) -> Result<bool> {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "Could not read Hyprland Lua configuration {}",
+                    path.display()
+                )
+            });
+        }
+    };
+    let filtered = contents
+        .split_inclusive('\n')
+        .filter(|line| line.trim() != APP_REQUIRE)
+        .collect::<String>();
+    if filtered == contents {
+        return Ok(false);
+    }
+    write_atomic(path, &filtered)?;
+    Ok(true)
+}
+
 fn focused_monitor_bounds() -> Result<MonitorBounds> {
     let output = Command::new("hyprctl")
         .args(["monitors", "-j"])
@@ -265,8 +329,9 @@ fn hyprland_config_dir() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MonitorBounds, position_coordinates, render_config};
+    use super::{MonitorBounds, position_coordinates, remove_module_require, render_config};
     use crate::settings::{HyprlandWindowSettings, WindowPosition};
+    use std::fs;
 
     fn monitor() -> MonitorBounds {
         MonitorBounds {
@@ -314,6 +379,30 @@ mod tests {
         assert!(config.contains("name = \"magicpointerv2-settings-window\""));
         assert!(config.contains("    center = true,"));
         assert!(config.contains("hl.bind(\"Home\", hl.dsp.exec_cmd(\"magicpointerv2\"))"));
+    }
+
+    #[test]
+    fn reset_removes_only_the_exact_managed_require_line() {
+        let path = std::env::temp_dir().join(format!(
+            "magicpointerv2-hyprland-reset-{}-{}.lua",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let original =
+            "-- keep this comment\nrequire(\"magicpointerv2\")\nrequire(\"other-module\")\n";
+        fs::write(&path, original).unwrap();
+
+        assert!(remove_module_require(&path).unwrap());
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "-- keep this comment\nrequire(\"other-module\")\n"
+        );
+        assert!(!remove_module_require(&path).unwrap());
+
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

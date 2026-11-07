@@ -358,14 +358,67 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     footer.set_margin_bottom(16);
     footer.set_margin_start(24);
     footer.set_margin_end(24);
-    footer.set_halign(gtk4::Align::End);
+    footer.set_halign(gtk4::Align::Fill);
+    let reset = gtk4::Button::with_label("Reset app data…");
+    reset.add_css_class("destructive-action");
     let close = gtk4::Button::with_label("Close");
     let save = gtk4::Button::with_label("Save settings");
     save.add_css_class("suggested-action");
+    footer.append(&reset);
+    let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    footer.append(&spacer);
     footer.append(&close);
     footer.append(&save);
     root.append(&footer);
     window.set_child(Some(&root));
+
+    let reset_window = window.clone();
+    let reset_app = app.clone();
+    let reset_shared = shared.clone();
+    let reset_status = status.clone();
+    reset.connect_clicked(move |_| {
+        let dialog = gtk4::Dialog::builder()
+            .title("Reset Magic Pointer")
+            .transient_for(&reset_window)
+            .modal(true)
+            .build();
+        let message = gtk4::Label::new(Some(
+            "This permanently removes Magic Pointer settings and API keys from the system keyring, deletes its managed Hyprland Lua module and require line, then closes the app. Your other Hyprland settings and unrelated files are kept.",
+        ));
+        message.set_wrap(true);
+        message.set_xalign(0.0);
+        message.set_margin_top(16);
+        message.set_margin_bottom(16);
+        message.set_margin_start(16);
+        message.set_margin_end(16);
+        dialog.content_area().append(&message);
+        dialog.add_button("Cancel", gtk4::ResponseType::Cancel);
+        let confirm = dialog.add_button("Reset and close", gtk4::ResponseType::Accept);
+        confirm.add_css_class("destructive-action");
+
+        let settings_state = reset_shared.clone();
+        let status_label = reset_status.clone();
+        let settings_window = reset_window.clone();
+        let application = reset_app.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk4::ResponseType::Accept {
+                match settings::reset_app_data() {
+                    Ok(()) => {
+                        *settings_state.borrow_mut() = AppSettings::default();
+                        settings_window.close();
+                        application.quit();
+                    }
+                    Err(error) => {
+                        tracing::error!("Could not completely reset application data: {error:#}");
+                        status_label.set_text(&format!("Reset was incomplete: {error:#}"));
+                    }
+                }
+            }
+            dialog.close();
+        });
+        dialog.present();
+    });
 
     let open_studio_status = status.clone();
     open_studio.connect_clicked(move |_| {

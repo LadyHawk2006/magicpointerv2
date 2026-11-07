@@ -56,7 +56,9 @@ with code changes.
   template containing the effective bundled styles, current font/background
   values, and any selected custom stylesheet, alongside a ready-to-load
   `examplecss.css` sample theme. `src/auth.rs` resolves environment and saved
-  keys.
+  keys. `settings::reset_app_data` removes persisted settings and app-owned
+  Secret Service entries, then removes the managed Hyprland module and only
+  the app's require line; unrelated user CSS/configuration must be preserved.
 - `src/styles/` bundles GTK CSS at compile time. `custom.css.template`
   documents the styled components and serves as the source for the Settings
   template export; `examplecss.css` is the exported sample theme. The
