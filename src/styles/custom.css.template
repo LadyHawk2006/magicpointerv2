@@ -119,6 +119,8 @@
  *     Pending and sent image attachment layout.
  *   .attachment-preview, .pending-attachment-preview
  *     Captured-image preview sizing and shape.
+ *   .annotate-attachment-button and :hover
+ *     Opens the existing annotation canvas for a pending capture.
  *   .remove-attachment-button and :hover
  *     Remove control on a pending attachment.
  *   .chat-input-bar, .chat-entry-shell and :focus-within

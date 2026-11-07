@@ -20,7 +20,9 @@ pub mod attachments;
 pub mod indicator;
 pub mod markdown;
 
-use attachments::{picture_for_image, refresh_attachment_previews, refresh_pending_attachment_previews};
+use attachments::{
+    picture_for_image, refresh_attachment_previews, refresh_pending_attachment_previews,
+};
 use indicator::{begin_fetch_indicator, draw_fetch_glow, finish_fetch_indicator};
 pub use markdown::render_markdown;
 
@@ -253,6 +255,8 @@ pub fn build_floating_card(
     let capture_attachment_previews = attachment_previews.clone();
     let capture_attachment_row = attachment_row.clone();
     capture_btn.connect_clicked(move |_| {
+        let capture_app = capture_app.clone();
+        let callback_app = capture_app.clone();
         let pending_images = capture_pending_images.clone();
         let attachment_previews = capture_attachment_previews.clone();
         let attachment_row = capture_attachment_row.clone();
@@ -270,6 +274,7 @@ pub fn build_floating_card(
                     drop(images);
                     attachment_row.set_visible(true);
                     refresh_pending_attachment_previews(
+                        &callback_app,
                         &attachment_previews,
                         pending_images.clone(),
                         attachment_row.clone(),

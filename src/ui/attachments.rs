@@ -6,6 +6,10 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use image::DynamicImage;
 
+use crate::hypr_ipc;
+use crate::prompt_overlay;
+use crate::prompt_overlay::{apply_annotations_to_image, show_annotation_modal};
+
 pub fn refresh_attachment_previews(container: &gtk4::Box, images: &[DynamicImage]) {
     const PREVIEW_MIN_WIDTH: i32 = 96;
     const PREVIEW_MIN_HEIGHT: i32 = 72;
@@ -22,6 +26,7 @@ pub fn refresh_attachment_previews(container: &gtk4::Box, images: &[DynamicImage
 }
 
 pub fn refresh_pending_attachment_previews(
+    app: &gtk4::Application,
     container: &gtk4::Box,
     images: Rc<RefCell<Vec<DynamicImage>>>,
     attachment_row: gtk4::Box,
@@ -36,6 +41,13 @@ pub fn refresh_pending_attachment_previews(
         preview.add_css_class("pending-attachment-preview");
         preview.set_child(Some(&picture_for_image(&images.borrow()[index], 96, 72)));
 
+        let annotate_button = gtk4::Button::from_icon_name("document-edit-symbolic");
+        annotate_button.add_css_class("annotate-attachment-button");
+        annotate_button.set_tooltip_text(Some("Annotate capture"));
+        annotate_button.set_halign(gtk4::Align::Start);
+        annotate_button.set_valign(gtk4::Align::Start);
+        preview.add_overlay(&annotate_button);
+
         let remove_button = gtk4::Button::from_icon_name("window-close-symbolic");
         remove_button.add_css_class("remove-attachment-button");
         remove_button.set_tooltip_text(Some("Remove capture"));
@@ -43,9 +55,58 @@ pub fn refresh_pending_attachment_previews(
         remove_button.set_valign(gtk4::Align::Start);
         preview.add_overlay(&remove_button);
 
+        let annotate_app = app.clone();
+        let annotate_images = images.clone();
+        let annotate_previews = container.clone();
+        let annotate_row = attachment_row.clone();
+        annotate_button.connect_clicked(move |_| {
+            let Some(image) = annotate_images.borrow().get(index).cloned() else {
+                return;
+            };
+            let Some(display) = gdk::Display::default() else {
+                tracing::error!("Cannot annotate capture: no GDK display is available");
+                return;
+            };
+            let cursor = hypr_ipc::get_hyprland_state()
+                .map(|state| state.cursor)
+                .unwrap_or((0, 0));
+            let Some((monitor, geometry)) = prompt_overlay::find_monitor(&display, cursor) else {
+                tracing::error!("Cannot annotate capture: no display monitor is available");
+                return;
+            };
+
+            let updated_images = annotate_images.clone();
+            let updated_previews = annotate_previews.clone();
+            let updated_row = annotate_row.clone();
+            let updated_app = annotate_app.clone();
+            let annotated_image = image.clone();
+            show_annotation_modal(
+                &annotate_app,
+                &monitor,
+                geometry,
+                &image,
+                Vec::new(),
+                move |annotations| {
+                    let annotated = apply_annotations_to_image(&annotated_image, &annotations);
+                    let mut images = updated_images.borrow_mut();
+                    if let Some(pending_image) = images.get_mut(index) {
+                        *pending_image = annotated;
+                    }
+                    drop(images);
+                    refresh_pending_attachment_previews(
+                        &updated_app,
+                        &updated_previews,
+                        updated_images,
+                        updated_row,
+                    );
+                },
+            );
+        });
+
         let pending_images = images.clone();
         let previews = container.clone();
         let attachment_row = attachment_row.clone();
+        let app = app.clone();
         remove_button.connect_clicked(move |_| {
             let mut images = pending_images.borrow_mut();
             if index < images.len() {
@@ -55,6 +116,7 @@ pub fn refresh_pending_attachment_previews(
             drop(images);
             attachment_row.set_visible(!is_empty);
             refresh_pending_attachment_previews(
+                &app,
                 &previews,
                 pending_images.clone(),
                 attachment_row.clone(),

@@ -420,6 +420,9 @@ history. Prefer the setup dialog or Settings and the system keyring.
 - Type follow-up messages in the composer at the bottom of the window.
 - Use the **+** button to capture another region. The selection overlay opens
   again; a successful capture appears as a pending preview above the composer.
+- Use the pencil button on a pending preview to open the existing annotation
+  canvas. Draw on the capture and choose **Done**; the marked-up image replaces
+  that pending attachment and is sent with the next message.
 - Click the **×** on a pending preview to remove that image before sending.
 - Click the send button or press **Enter** to submit a follow-up; **Shift+Enter**
   inserts a newline.

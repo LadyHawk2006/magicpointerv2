@@ -133,10 +133,11 @@ arboard's Wayland data-control support.
 
 The input supports multiline text; Enter submits and Shift+Enter inserts a
 newline. The plus button starts another selection/capture. New captures are
-shown as pending attachments and can be individually removed before sending.
-The next user turn can contain multiple captured images. The UI displays an
-activity glow while network responses are in progress and scrolls the chat to
-the newest content.
+shown as pending attachments. Each pending preview can be annotated through
+the existing drawing canvas or removed individually before sending. Annotation
+is rasterized into that attachment in memory; the next user turn can contain
+multiple captured and marked-up images. The UI displays an activity glow while
+network responses are in progress and scrolls the chat to the newest content.
 
 The conversation object retains Gemini request history in memory. The initial
 prompt and image, later user messages and any attached images, and completed
