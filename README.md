@@ -16,6 +16,7 @@ technology, and runtime boundaries, see [description.txt](./description.txt).
 ## Contents
 
 - [Project vision and current scope](#project-vision-and-current-scope)
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [How a request works](#how-a-request-works)
 - [Architecture](#architecture)
@@ -51,6 +52,24 @@ The selected region is chosen by the user for each initial request. Additional
 regions can be captured and attached to follow-up messages. Optional
 spatial-intelligence settings can add hardware information, the active-window
 title, and user-entered context to requests.
+
+## Screenshots
+
+### First-run API key setup
+
+![Magic Pointer first-run screen guiding the user to connect a Gemini API key](./Assets/screenshots/0011.png)
+
+### Capture prompt and quick actions
+
+![Capture preview and cursor-adjacent prompt composer with quick-action chips](./Assets/screenshots/0013.png)
+
+### Asking about a selected capture
+
+![Prompt composer with a question ready to send about a selected screen capture](./Assets/screenshots/0015.png)
+
+### Streaming chat response
+
+![Magic Pointer chat window showing a screen capture, user question, and Gemini response](./Assets/screenshots/0016.png)
 
 ## Features
 
