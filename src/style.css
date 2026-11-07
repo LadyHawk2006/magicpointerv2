@@ -74,48 +74,76 @@ window.settings-window.background,
 .prompt-card {
     color: @theme_fg_color;
     background-color: @theme_bg_color;
-    border: 1px solid alpha(@theme_fg_color, 0.08);
-    border-radius: 28px; /* Corners will now float perfectly */
-    padding: 20px;
-    box-shadow: none;
+    border: 1px solid alpha(@theme_fg_color, 0.12);
+    border-radius: 20px;
+    padding: 16px 18px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
 }
 
-.prompt-preview-container {
+.prompt-header-row {
     margin-bottom: 12px;
 }
 
-.annotation-toolbar {
-    margin-bottom: 6px;
-}
-
-.annotation-tool-btn {
-    padding: 3px 8px;
-    min-height: 24px;
-    min-width: 24px;
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: 6px;
-    background: alpha(@theme_fg_color, 0.04);
-    color: alpha(@theme_fg_color, 0.75);
-    border: 1px solid alpha(@theme_fg_color, 0.08);
-    transition: all 0.15s ease-in-out;
-}
-
-.annotation-tool-btn:hover {
-    background-color: alpha(@theme_fg_color, 0.10);
-    color: @theme_fg_color;
-}
-
-.annotation-tool-btn.active {
-    background-color: alpha(@theme_selected_bg_color, 0.20);
-    color: @theme_selected_bg_color;
-    border-color: alpha(@theme_selected_bg_color, 0.50);
+.prompt-thumb-box {
+    border-radius: 10px;
+    border: 1px solid alpha(@theme_fg_color, 0.10);
+    overflow: hidden;
+    background-color: alpha(@theme_fg_color, 0.04);
+    cursor: pointer;
 }
 
 .prompt-preview {
-    background-color: alpha(@theme_fg_color, 0.05);
-    border: none; 
-    border-radius: 14px;
+    background-color: transparent;
+    border: none;
+    border-radius: 10px;
+}
+
+.prompt-header-info {
+    margin-left: 12px;
+}
+
+.prompt-capture-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: @theme_fg_color;
+}
+
+.prompt-capture-subtitle {
+    font-size: 11px;
+    color: @insensitive_fg_color;
+    margin-bottom: 6px;
+}
+
+.prompt-annotate-btn {
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 6px;
+    background: alpha(@theme_fg_color, 0.05);
+    color: alpha(@theme_fg_color, 0.85);
+    border: 1px solid alpha(@theme_fg_color, 0.10);
+    transition: all 0.15s ease-in-out;
+}
+
+.prompt-annotate-btn:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.20);
+    color: @theme_selected_bg_color;
+    border-color: alpha(@theme_selected_bg_color, 0.45);
+}
+
+.prompt-clear-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 6px;
+    background: transparent;
+    color: @insensitive_fg_color;
+    border: none;
+    transition: all 0.15s ease;
+}
+
+.prompt-clear-btn:hover {
+    color: @theme_fg_color;
+    background-color: alpha(@theme_fg_color, 0.08);
 }
 
 .prompt-chips-bar {
@@ -125,18 +153,96 @@ window.settings-window.background,
 .prompt-chip {
     font-size: 11px;
     font-weight: 500;
-    padding: 4px 10px;
+    padding: 4px 11px;
     border-radius: 9999px;
-    background-color: alpha(@theme_fg_color, 0.05);
-    color: alpha(@theme_fg_color, 0.82);
+    background-color: alpha(@theme_fg_color, 0.04);
+    color: alpha(@theme_fg_color, 0.85);
     border: 1px solid alpha(@theme_fg_color, 0.08);
     transition: all 0.15s ease-in-out;
 }
 
 .prompt-chip:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.22);
+    color: @theme_selected_bg_color;
+    border-color: alpha(@theme_selected_bg_color, 0.50);
+}
+
+/* LARGE ANNOTATION MODAL */
+window.annotation-modal-scrim,
+window.annotation-modal-scrim.background {
+    background: rgba(0, 0, 0, 0.65);
+    background-color: rgba(0, 0, 0, 0.65);
+}
+
+.annotation-modal-card {
+    background-color: @theme_bg_color;
+    color: @theme_fg_color;
+    border: 1px solid alpha(@theme_fg_color, 0.14);
+    border-radius: 16px;
+    padding: 14px 16px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.60);
+}
+
+.annotation-modal-header {
+    margin-bottom: 12px;
+}
+
+.annotation-modal-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: @theme_fg_color;
+}
+
+.annotation-modal-subtitle {
+    font-size: 11px;
+    color: @insensitive_fg_color;
+}
+
+.annotation-tool-pill {
+    padding: 4px 12px;
+    min-height: 26px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 8px;
+    background: alpha(@theme_fg_color, 0.04);
+    color: alpha(@theme_fg_color, 0.80);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
+    transition: all 0.15s ease-in-out;
+}
+
+.annotation-tool-pill:hover {
+    background-color: alpha(@theme_fg_color, 0.10);
+    color: @theme_fg_color;
+    border-color: alpha(@theme_fg_color, 0.16);
+}
+
+.annotation-tool-pill.active {
+    background-color: alpha(@theme_selected_bg_color, 0.22);
+    color: @theme_selected_bg_color;
+    border-color: alpha(@theme_selected_bg_color, 0.55);
+}
+
+.annotation-done-btn {
+    padding: 4px 16px;
+    min-height: 26px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
     background-color: @theme_selected_bg_color;
     color: @theme_selected_fg_color;
-    border-color: @theme_selected_bg_color;
+    border: none;
+    transition: opacity 0.15s ease-in-out;
+}
+
+.annotation-done-btn:hover {
+    opacity: 0.90;
+}
+
+.annotation-canvas-container {
+    border-radius: 10px;
+    background: alpha(@theme_fg_color, 0.02);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
+    overflow: hidden;
 }
 
 .prompt-composer {

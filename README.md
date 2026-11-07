@@ -80,10 +80,10 @@ title, and user-entered context to requests.
 ### Prompt and chat
 
 - Shows a capture preview alongside the initial prompt composer.
-- **Lightweight in-memory markup**: Draw freehand lines (✏️ Pen), pointing
-  arrows (↗️ Arrow), or bounding boxes (▢ Box) directly on the capture preview
-  before submitting. Annotations are baked into RAM before sending to Gemini with
-  zero temporary files.
+- **Large-canvas markup modal**: Click the thumbnail or "Annotate" to open a
+  spacious 1280×720 overlay for precise drawing with Pen, Arrow, Box, Undo (Ctrl+Z),
+  and Clear tools. Vector annotations are kept in memory without intermediate image
+  re-encoding; the final image is only re-encoded once when the prompt is submitted.
 - **Quick-action chips**: One-click zero-typing pills below the entry (*Explain
   this*, *Extract text / Code*, *Debug error*, *Summarize*, *Translate*) to
   immediately dispatch common prompts.
