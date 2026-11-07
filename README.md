@@ -54,6 +54,17 @@ title, and user-entered context to requests.
 ### Screen selection and capture
 
 - Opens a fullscreen, transparent GTK Layer Shell surface for selection.
+- **Spacebar mode switcher**: Press **Space** to toggle between:
+  - *Window Snap*: Automatically spotlights and locks to the window under the
+    cursor; click to capture.
+  - *Region Selection*: Pure freeform rectangular drag selection.
+  - *Full Monitor*: Spotlights the whole monitor; one click captures everything.
+- **Tab / Scroll window cycling**: When windows overlap under the cursor, press
+  **Tab** (or **Shift+Tab**) or scroll the mouse wheel to cycle down through the
+  stacked window layers.
+- **Edge snapping magnetism**: While dragging a custom region, selection edges
+  subtly snap to nearby window and screen borders within 10 pixels with visual
+  alignment guidelines.
 - Hover over any open window to automatically snap and spotlight its bounding
   box with a title/dimensions pill; click to immediately capture the window.
 - Drag to select a custom rectangular region; the selected area is highlighted
@@ -69,10 +80,16 @@ title, and user-entered context to requests.
 ### Prompt and chat
 
 - Shows a capture preview alongside the initial prompt composer.
+- **Lightweight in-memory markup**: Draw freehand lines (✏️ Pen), pointing
+  arrows (↗️ Arrow), or bounding boxes (▢ Box) directly on the capture preview
+  before submitting. Annotations are baked into RAM before sending to Gemini with
+  zero temporary files.
+- **Quick-action chips**: One-click zero-typing pills below the entry (*Explain
+  this*, *Extract text / Code*, *Debug error*, *Summarize*, *Translate*) to
+  immediately dispatch common prompts.
 - Opens a floating, regular GTK Wayland chat window after the initial prompt is
   submitted.
-- Supports multiline prompts in both composers. **Enter** inserts a newline;
-  **Ctrl+Enter** or the send button submits.
+- **Enter** sends or submits the prompt; **Shift+Enter** inserts a newline.
 - Grows the input to a bounded height and then scrolls within the input.
 - Keeps the caret visible as the user types or navigates a longer prompt.
 - Supports multi-turn conversation in the current application session.

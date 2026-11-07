@@ -1,3 +1,4 @@
+use gtk4::cairo;
 use gtk4::gdk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -6,10 +7,24 @@ use image::DynamicImage;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const PROMPT_WIDTH: i32 = 380;
-const PROMPT_HEIGHT: i32 = 300;
+const PROMPT_WIDTH: i32 = 450;
+const PROMPT_HEIGHT: i32 = 380;
 const CURSOR_GAP: i32 = 18;
 const EDGE_PADDING: i32 = 12;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Annotation {
+    Pen(Vec<(f64, f64)>),
+    Arrow { start: (f64, f64), end: (f64, f64) },
+    Rect { start: (f64, f64), end: (f64, f64) },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnnotationTool {
+    Pen,
+    Arrow,
+    Rect,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct PromptPosition {
@@ -48,6 +63,110 @@ fn position_prompt(
             (available_height - prompt_size.1 - EDGE_PADDING).max(EDGE_PADDING),
         ),
     }
+}
+
+pub fn apply_annotations_to_image(
+    image: &DynamicImage,
+    annotations: &[Annotation],
+) -> DynamicImage {
+    if annotations.is_empty() {
+        return image.clone();
+    }
+
+    let width = image.width() as i32;
+    let height = image.height() as i32;
+
+    let mut surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, width, height) {
+        Ok(s) => s,
+        Err(_) => return image.clone(),
+    };
+
+    let cr = match cairo::Context::new(&surface) {
+        Ok(c) => c,
+        Err(_) => return image.clone(),
+    };
+
+    let scale_x = width as f64;
+    let scale_y = height as f64;
+
+    cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
+    cr.set_line_width((width.min(height) as f64 * 0.005).max(3.5));
+    cr.set_line_cap(cairo::LineCap::Round);
+    cr.set_line_join(cairo::LineJoin::Round);
+
+    for annot in annotations {
+        match annot {
+            Annotation::Pen(points) => {
+                if points.len() < 2 {
+                    if let Some(p) = points.first() {
+                        cr.arc(p.0 * scale_x, p.1 * scale_y, 4.0, 0.0, std::f64::consts::TAU);
+                        let _ = cr.fill();
+                    }
+                    continue;
+                }
+                cr.move_to(points[0].0 * scale_x, points[0].1 * scale_y);
+                for p in &points[1..] {
+                    cr.line_to(p.0 * scale_x, p.1 * scale_y);
+                }
+                let _ = cr.stroke();
+            }
+            Annotation::Arrow { start, end } => {
+                let x0 = start.0 * scale_x;
+                let y0 = start.1 * scale_y;
+                let x1 = end.0 * scale_x;
+                let y1 = end.1 * scale_y;
+
+                cr.move_to(x0, y0);
+                cr.line_to(x1, y1);
+                let _ = cr.stroke();
+
+                let angle = (y1 - y0).atan2(x1 - x0);
+                let head_len = (width.min(height) as f64 * 0.025).clamp(16.0, 36.0);
+                let arrow_angle = std::f64::consts::PI / 6.0;
+
+                let p1_x = x1 - head_len * (angle - arrow_angle).cos();
+                let p1_y = y1 - head_len * (angle - arrow_angle).sin();
+                let p2_x = x1 - head_len * (angle + arrow_angle).cos();
+                let p2_y = y1 - head_len * (angle + arrow_angle).sin();
+
+                cr.move_to(x1, y1);
+                cr.line_to(p1_x, p1_y);
+                cr.line_to(p2_x, p2_y);
+                cr.close_path();
+                let _ = cr.fill();
+            }
+            Annotation::Rect { start, end } => {
+                let rx = start.0.min(end.0) * scale_x;
+                let ry = start.1.min(end.1) * scale_y;
+                let rw = (end.0 - start.0).abs() * scale_x;
+                let rh = (end.1 - start.1).abs() * scale_y;
+
+                cr.rectangle(rx, ry, rw, rh);
+                let _ = cr.stroke();
+            }
+        }
+    }
+
+    drop(cr);
+
+    let mut rgba_image = image.to_rgba8();
+    if let Ok(data) = surface.data() {
+        for (orig, annot_chunk) in rgba_image.chunks_exact_mut(4).zip(data.chunks_exact(4)) {
+            let a = annot_chunk[3] as u32;
+            if a > 0 {
+                let inv_a = 255 - a;
+                let r = annot_chunk[2] as u32; // In Cairo ARGB32 little endian: [B, G, R, A]
+                let g = annot_chunk[1] as u32;
+                let b = annot_chunk[0] as u32;
+                orig[0] = ((orig[0] as u32 * inv_a + r * 255) / 255).min(255) as u8;
+                orig[1] = ((orig[1] as u32 * inv_a + g * 255) / 255).min(255) as u8;
+                orig[2] = ((orig[2] as u32 * inv_a + b * 255) / 255).min(255) as u8;
+                orig[3] = (orig[3] as u32 + a).min(255) as u8;
+            }
+        }
+    }
+
+    DynamicImage::ImageRgba8(rgba_image)
 }
 
 pub fn show_prompt_overlay<F, D>(
@@ -96,15 +215,297 @@ pub fn show_prompt_overlay<F, D>(
     let card = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     card.add_css_class("prompt-card");
 
+    // --- Lightweight Annotation State & Setup ---
+    let annotations: Rc<RefCell<Vec<Annotation>>> = Rc::new(RefCell::new(Vec::new()));
+    let current_tool: Rc<RefCell<AnnotationTool>> = Rc::new(RefCell::new(AnnotationTool::Pen));
+    let active_drawing: Rc<RefCell<Option<Annotation>>> = Rc::new(RefCell::new(None));
+
+    let preview_container = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    preview_container.add_css_class("prompt-preview-container");
+
+    // Mini annotation toolbar
+    let toolbar = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+    toolbar.add_css_class("annotation-toolbar");
+
+    let pen_btn = gtk4::Button::with_label("✏️ Pen");
+    pen_btn.add_css_class("annotation-tool-btn");
+    pen_btn.add_css_class("active");
+    pen_btn.set_tooltip_text(Some("Draw freehand circles or underlines"));
+
+    let arrow_btn = gtk4::Button::with_label("↗️ Arrow");
+    arrow_btn.add_css_class("annotation-tool-btn");
+    arrow_btn.set_tooltip_text(Some("Draw pointing arrow"));
+
+    let rect_btn = gtk4::Button::with_label("▢ Box");
+    rect_btn.add_css_class("annotation-tool-btn");
+    rect_btn.set_tooltip_text(Some("Draw bounding box"));
+
+    let clear_btn = gtk4::Button::with_label("↺ Clear");
+    clear_btn.add_css_class("annotation-tool-btn");
+    clear_btn.set_tooltip_text(Some("Clear annotations"));
+
+    toolbar.append(&pen_btn);
+    toolbar.append(&arrow_btn);
+    toolbar.append(&rect_btn);
+    toolbar.append(&clear_btn);
+    preview_container.append(&toolbar);
+
+    // Thumbnail preview overlay with interactive drawing area
+    let preview_overlay = gtk4::Overlay::new();
     let texture = image_texture(&image);
     let preview = gtk4::Picture::for_paintable(&texture);
     preview.set_can_shrink(true);
     preview.set_keep_aspect_ratio(true);
-    preview.set_size_request(112.min(prompt_width - 48), 104.min(prompt_height - 112));
+    let preview_w = 200.min(prompt_width - 48);
+    let preview_h = 110.min(prompt_height - 180);
+    preview.set_size_request(preview_w, preview_h);
     preview.add_css_class("prompt-preview");
     preview.set_overflow(gtk4::Overflow::Hidden);
     preview.set_halign(gtk4::Align::Start);
-    card.append(&preview);
+    preview_overlay.set_child(Some(&preview));
+
+    let da = gtk4::DrawingArea::new();
+    da.set_cursor_from_name(Some("crosshair"));
+    da.set_size_request(preview_w, preview_h);
+    da.set_halign(gtk4::Align::Start);
+    da.set_valign(gtk4::Align::Start);
+
+    let state_annots = annotations.clone();
+    let state_active = active_drawing.clone();
+    da.set_draw_func(move |_, cr, width, height| {
+        let scale_x = width as f64;
+        let scale_y = height as f64;
+
+        cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
+        cr.set_line_width(2.5);
+        cr.set_line_cap(cairo::LineCap::Round);
+        cr.set_line_join(cairo::LineJoin::Round);
+
+        let annots = state_annots.borrow();
+        for annot in annots.iter() {
+            match annot {
+                Annotation::Pen(points) => {
+                    if points.len() < 2 {
+                        continue;
+                    }
+                    cr.move_to(points[0].0 * scale_x, points[0].1 * scale_y);
+                    for p in &points[1..] {
+                        cr.line_to(p.0 * scale_x, p.1 * scale_y);
+                    }
+                    let _ = cr.stroke();
+                }
+                Annotation::Arrow { start, end } => {
+                    let x0 = start.0 * scale_x;
+                    let y0 = start.1 * scale_y;
+                    let x1 = end.0 * scale_x;
+                    let y1 = end.1 * scale_y;
+
+                    cr.move_to(x0, y0);
+                    cr.line_to(x1, y1);
+                    let _ = cr.stroke();
+
+                    let angle = (y1 - y0).atan2(x1 - x0);
+                    let head_len = 10.0;
+                    let arrow_angle = std::f64::consts::PI / 6.0;
+
+                    let p1_x = x1 - head_len * (angle - arrow_angle).cos();
+                    let p1_y = y1 - head_len * (angle - arrow_angle).sin();
+                    let p2_x = x1 - head_len * (angle + arrow_angle).cos();
+                    let p2_y = y1 - head_len * (angle + arrow_angle).sin();
+
+                    cr.move_to(x1, y1);
+                    cr.line_to(p1_x, p1_y);
+                    cr.line_to(p2_x, p2_y);
+                    cr.close_path();
+                    let _ = cr.fill();
+                }
+                Annotation::Rect { start, end } => {
+                    let rx = start.0.min(end.0) * scale_x;
+                    let ry = start.1.min(end.1) * scale_y;
+                    let rw = (end.0 - start.0).abs() * scale_x;
+                    let rh = (end.1 - start.1).abs() * scale_y;
+
+                    cr.rectangle(rx, ry, rw, rh);
+                    let _ = cr.stroke();
+                }
+            }
+        }
+
+        if let Some(ref active) = *state_active.borrow() {
+            match active {
+                Annotation::Pen(points) => {
+                    if points.len() >= 2 {
+                        cr.move_to(points[0].0 * scale_x, points[0].1 * scale_y);
+                        for p in &points[1..] {
+                            cr.line_to(p.0 * scale_x, p.1 * scale_y);
+                        }
+                        let _ = cr.stroke();
+                    }
+                }
+                Annotation::Arrow { start, end } => {
+                    let x0 = start.0 * scale_x;
+                    let y0 = start.1 * scale_y;
+                    let x1 = end.0 * scale_x;
+                    let y1 = end.1 * scale_y;
+
+                    cr.move_to(x0, y0);
+                    cr.line_to(x1, y1);
+                    let _ = cr.stroke();
+
+                    let angle = (y1 - y0).atan2(x1 - x0);
+                    let head_len = 10.0;
+                    let arrow_angle = std::f64::consts::PI / 6.0;
+
+                    let p1_x = x1 - head_len * (angle - arrow_angle).cos();
+                    let p1_y = y1 - head_len * (angle - arrow_angle).sin();
+                    let p2_x = x1 - head_len * (angle + arrow_angle).cos();
+                    let p2_y = y1 - head_len * (angle + arrow_angle).sin();
+
+                    cr.move_to(x1, y1);
+                    cr.line_to(p1_x, p1_y);
+                    cr.line_to(p2_x, p2_y);
+                    cr.close_path();
+                    let _ = cr.fill();
+                }
+                Annotation::Rect { start, end } => {
+                    let rx = start.0.min(end.0) * scale_x;
+                    let ry = start.1.min(end.1) * scale_y;
+                    let rw = (end.0 - start.0).abs() * scale_x;
+                    let rh = (end.1 - start.1).abs() * scale_y;
+
+                    cr.rectangle(rx, ry, rw, rh);
+                    let _ = cr.stroke();
+                }
+            }
+        }
+    });
+
+    // Wire up tool selection buttons
+    let tool_pen = current_tool.clone();
+    let b_pen = pen_btn.clone();
+    let b_arrow = arrow_btn.clone();
+    let b_rect = rect_btn.clone();
+    pen_btn.connect_clicked(move |_| {
+        *tool_pen.borrow_mut() = AnnotationTool::Pen;
+        b_pen.add_css_class("active");
+        b_arrow.remove_css_class("active");
+        b_rect.remove_css_class("active");
+    });
+
+    let tool_arrow = current_tool.clone();
+    let b_pen2 = pen_btn.clone();
+    let b_arrow2 = arrow_btn.clone();
+    let b_rect2 = rect_btn.clone();
+    arrow_btn.connect_clicked(move |_| {
+        *tool_arrow.borrow_mut() = AnnotationTool::Arrow;
+        b_arrow2.add_css_class("active");
+        b_pen2.remove_css_class("active");
+        b_rect2.remove_css_class("active");
+    });
+
+    let tool_rect = current_tool.clone();
+    let b_pen3 = pen_btn.clone();
+    let b_arrow3 = arrow_btn.clone();
+    let b_rect3 = rect_btn.clone();
+    rect_btn.connect_clicked(move |_| {
+        *tool_rect.borrow_mut() = AnnotationTool::Rect;
+        b_rect3.add_css_class("active");
+        b_pen3.remove_css_class("active");
+        b_arrow3.remove_css_class("active");
+    });
+
+    let clear_annots = annotations.clone();
+    let clear_active = active_drawing.clone();
+    let da_clear = da.clone();
+    clear_btn.connect_clicked(move |_| {
+        clear_annots.borrow_mut().clear();
+        clear_active.borrow_mut().take();
+        da_clear.queue_draw();
+    });
+
+    // Gesture drag for drawing on the preview
+    let draw_gesture = gtk4::GestureDrag::new();
+    let tool_drag = current_tool.clone();
+    let active_start = active_drawing.clone();
+    let da_start = da.clone();
+    draw_gesture.connect_drag_begin(move |_, x, y| {
+        let w = da_start.width() as f64;
+        let h = da_start.height() as f64;
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let nx = (x / w).clamp(0.0, 1.0);
+        let ny = (y / h).clamp(0.0, 1.0);
+
+        let annot = match *tool_drag.borrow() {
+            AnnotationTool::Pen => Annotation::Pen(vec![(nx, ny)]),
+            AnnotationTool::Arrow => Annotation::Arrow {
+                start: (nx, ny),
+                end: (nx, ny),
+            },
+            AnnotationTool::Rect => Annotation::Rect {
+                start: (nx, ny),
+                end: (nx, ny),
+            },
+        };
+        *active_start.borrow_mut() = Some(annot);
+        da_start.queue_draw();
+    });
+
+    let active_update = active_drawing.clone();
+    let da_update = da.clone();
+    draw_gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
+        let Some((start_x, start_y)) = gesture.start_point() else {
+            return;
+        };
+        let w = da_update.width() as f64;
+        let h = da_update.height() as f64;
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+
+        let cur_x = start_x + offset_x;
+        let cur_y = start_y + offset_y;
+        let nx = (cur_x / w).clamp(0.0, 1.0);
+        let ny = (cur_y / h).clamp(0.0, 1.0);
+
+        let mut active = active_update.borrow_mut();
+        if let Some(ref mut annot) = *active {
+            match annot {
+                Annotation::Pen(points) => {
+                    let should_push = points
+                        .last()
+                        .map(|last| (last.0 - nx).hypot(last.1 - ny) > 0.008)
+                        .unwrap_or(true);
+                    if should_push {
+                        points.push((nx, ny));
+                    }
+                }
+                Annotation::Arrow { end, .. } => {
+                    *end = (nx, ny);
+                }
+                Annotation::Rect { end, .. } => {
+                    *end = (nx, ny);
+                }
+            }
+        }
+        da_update.queue_draw();
+    });
+
+    let active_end = active_drawing.clone();
+    let annots_end = annotations.clone();
+    let da_end = da.clone();
+    draw_gesture.connect_drag_end(move |_, _, _| {
+        if let Some(annot) = active_end.borrow_mut().take() {
+            annots_end.borrow_mut().push(annot);
+        }
+        da_end.queue_draw();
+    });
+    da.add_controller(draw_gesture);
+
+    preview_overlay.add_overlay(&da);
+    preview_container.append(&preview_overlay);
+    card.append(&preview_container);
 
     let composer = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     composer.add_css_class("prompt-composer");
@@ -148,48 +549,88 @@ pub fn show_prompt_overlay<F, D>(
     let send_button = gtk4::Button::new();
     send_button.set_child(Some(&send_icon));
     send_button.add_css_class("prompt-send-button");
-    send_button.set_tooltip_text(Some("Send question"));
+    send_button.set_tooltip_text(Some("Send question (Enter)"));
     composer.append(&entry_scroll);
     composer.append(&send_button);
     card.append(&composer);
-    window.set_child(Some(&card));
 
-    let image = Rc::new(RefCell::new(Some(image)));
-    let on_submit = Rc::new(RefCell::new(Some(on_submit)));
+    // --- Quick-Action Chips (Zero-Typing Prompts) ---
+    let chip_bar = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    chip_bar.add_css_class("prompt-chips-bar");
+
+    let chips = [
+        ("Explain this", "Explain what is shown in this capture in detail."),
+        ("Extract text / Code", "Extract all visible text and code from this image verbatim."),
+        ("Debug error", "Diagnose this error or bug, explain why it occurred, and provide the fix."),
+        ("Summarize", "Summarize the key information and points visible here."),
+        ("Translate", "Translate the visible text into English and explain key terms."),
+    ];
+
+    let image_holder = Rc::new(RefCell::new(Some(image)));
+    let on_submit_holder = Rc::new(RefCell::new(Some(on_submit)));
     let submit_window = window.downgrade();
     let submit_entry = entry.clone();
-    let submit_image = image.clone();
-    let submit_callback = on_submit.clone();
-    let submit = move || {
-        let buffer = submit_entry.buffer();
-        let (start, end) = buffer.bounds();
-        let question = buffer.text(&start, &end, true).trim().to_string();
+    let submit_image = image_holder.clone();
+    let submit_callback = on_submit_holder.clone();
+    let submit_annots = annotations.clone();
+
+    let submit = Rc::new(move |prompt_override: Option<String>| {
+        let question = if let Some(override_text) = prompt_override {
+            override_text
+        } else {
+            let buffer = submit_entry.buffer();
+            let (start, end) = buffer.bounds();
+            buffer.text(&start, &end, true).trim().to_string()
+        };
+
         if question.is_empty() {
             return;
         }
 
-        let (Some(image), Some(callback)) = (
+        let (Some(raw_image), Some(callback)) = (
             submit_image.borrow_mut().take(),
             submit_callback.borrow_mut().take(),
         ) else {
             return;
         };
+
         if let Some(window) = submit_window.upgrade() {
             window.close();
         }
-        callback(question, image);
-    };
+
+        // Apply lightweight in-memory annotations before dispatching
+        let final_image = apply_annotations_to_image(&raw_image, &submit_annots.borrow());
+        callback(question, final_image);
+    });
+
+    for (label, prompt_text) in chips {
+        let chip_btn = gtk4::Button::with_label(label);
+        chip_btn.add_css_class("prompt-chip");
+        chip_btn.set_tooltip_text(Some("Quickly ask without typing"));
+
+        let submit_chip = submit.clone();
+        chip_btn.connect_clicked(move |_| {
+            submit_chip(Some(prompt_text.to_string()));
+        });
+        chip_bar.append(&chip_btn);
+    }
+    card.append(&chip_bar);
+    window.set_child(Some(&card));
 
     let submit_button = submit.clone();
-    send_button.connect_clicked(move |_| submit_button());
+    send_button.connect_clicked(move |_| submit_button(None));
+
+    // Enter to submit; Shift+Enter to insert a newline
     let submit_key = submit.clone();
     let submit_controller = gtk4::EventControllerKey::new();
     submit_controller.connect_key_pressed(move |_, key, _, state| {
-        if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter)
-            && state.contains(gdk::ModifierType::CONTROL_MASK)
-        {
-            submit_key();
-            glib::Propagation::Stop
+        if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) {
+            if state.contains(gdk::ModifierType::SHIFT_MASK) {
+                glib::Propagation::Proceed
+            } else {
+                submit_key(None);
+                glib::Propagation::Stop
+            }
         } else {
             glib::Propagation::Proceed
         }
@@ -260,8 +701,9 @@ fn image_texture(image: &DynamicImage) -> gdk::MemoryTexture {
 
 #[cfg(test)]
 mod tests {
-    use super::{PromptPosition, position_prompt};
+    use super::*;
     use gtk4::gdk;
+    use image::{DynamicImage, RgbaImage};
 
     #[test]
     fn prompt_is_placed_beside_cursor_when_room_is_available() {
@@ -297,5 +739,38 @@ mod tests {
                 top: 318
             }
         );
+    }
+
+    #[test]
+    fn apply_annotations_renders_onto_image_in_memory() {
+        let img = DynamicImage::ImageRgba8(RgbaImage::new(100, 100));
+        let annots = vec![
+            Annotation::Pen(vec![(0.1, 0.1), (0.5, 0.5)]),
+            Annotation::Arrow {
+                start: (0.2, 0.2),
+                end: (0.8, 0.8),
+            },
+            Annotation::Rect {
+                start: (0.3, 0.3),
+                end: (0.7, 0.7),
+            },
+        ];
+
+        let result = apply_annotations_to_image(&img, &annots);
+        assert_eq!(result.width(), 100);
+        assert_eq!(result.height(), 100);
+
+        // Verify that some pixels are no longer 0 alpha / 0 color (annotations drawn)
+        let rgba = result.to_rgba8();
+        let modified = rgba.pixels().any(|p| p[3] > 0);
+        assert!(modified, "Annotations should modify pixels");
+    }
+
+    #[test]
+    fn empty_annotations_return_untouched_image() {
+        let img = DynamicImage::ImageRgba8(RgbaImage::new(50, 50));
+        let result = apply_annotations_to_image(&img, &[]);
+        assert_eq!(result.width(), 50);
+        assert_eq!(result.height(), 50);
     }
 }

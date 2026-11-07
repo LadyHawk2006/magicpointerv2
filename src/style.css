@@ -80,11 +80,63 @@ window.settings-window.background,
     box-shadow: none;
 }
 
+.prompt-preview-container {
+    margin-bottom: 12px;
+}
+
+.annotation-toolbar {
+    margin-bottom: 6px;
+}
+
+.annotation-tool-btn {
+    padding: 3px 8px;
+    min-height: 24px;
+    min-width: 24px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 6px;
+    background: alpha(@theme_fg_color, 0.04);
+    color: alpha(@theme_fg_color, 0.75);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
+    transition: all 0.15s ease-in-out;
+}
+
+.annotation-tool-btn:hover {
+    background-color: alpha(@theme_fg_color, 0.10);
+    color: @theme_fg_color;
+}
+
+.annotation-tool-btn.active {
+    background-color: alpha(@theme_selected_bg_color, 0.20);
+    color: @theme_selected_bg_color;
+    border-color: alpha(@theme_selected_bg_color, 0.50);
+}
+
 .prompt-preview {
     background-color: alpha(@theme_fg_color, 0.05);
     border: none; 
-    border-radius: 16px;
-    margin-bottom: 16px;
+    border-radius: 14px;
+}
+
+.prompt-chips-bar {
+    margin-top: 10px;
+}
+
+.prompt-chip {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    background-color: alpha(@theme_fg_color, 0.05);
+    color: alpha(@theme_fg_color, 0.82);
+    border: 1px solid alpha(@theme_fg_color, 0.08);
+    transition: all 0.15s ease-in-out;
+}
+
+.prompt-chip:hover {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    border-color: @theme_selected_bg_color;
 }
 
 .prompt-composer {

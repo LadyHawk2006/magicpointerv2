@@ -402,11 +402,16 @@ pub fn build_floating_card(
     let submit_key_entry = entry.clone();
     let submit_controller = gtk4::EventControllerKey::new();
     submit_controller.connect_key_pressed(move |_, key, _, state| {
-        if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter)
-            && state.contains(gdk::ModifierType::CONTROL_MASK)
-        {
-            submit_key(text_view_contents(&submit_key_entry));
-            glib::Propagation::Stop
+        if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) {
+            if state.contains(gdk::ModifierType::SHIFT_MASK) {
+                glib::Propagation::Proceed
+            } else {
+                let text = text_view_contents(&submit_key_entry);
+                if !text.trim().is_empty() {
+                    submit_key(text);
+                }
+                glib::Propagation::Stop
+            }
         } else {
             glib::Propagation::Proceed
         }
