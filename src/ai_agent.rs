@@ -1,4 +1,5 @@
 use crate::auth;
+use crate::settings::AppSettings;
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::StreamExt;
@@ -64,9 +65,6 @@ impl fmt::Display for GeminiOverloadedError {
 }
 
 impl std::error::Error for GeminiOverloadedError {}
-
-const MODEL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
-const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn take_sse_event(buffer: &mut String, end_of_stream: bool) -> Option<String> {
     let lf_boundary = buffer.find("\n\n").map(|index| (index, 2));
@@ -137,19 +135,6 @@ fn parse_gemini_event(event: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-const MODELS_TO_TRY: &[&str] = &[
-    "gemini-3.1-flash-lite",
-    "gemini-flash-lite-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-2.5-flash",
-];
-
 /// Maintains multi-turn conversation history
 #[derive(Clone)]
 pub struct ConversationSession {
@@ -209,6 +194,7 @@ impl ConversationSession {
     /// Streams the next assistant turn to the UI
     pub async fn stream_next_turn(&self, token_tx: mpsc::Sender<String>) -> Result<()> {
         let history = self.contents.lock().await.clone();
+        let settings = AppSettings::load()?;
         let api_keys = auth::get_api_keys()?.into_iter().collect::<Vec<_>>();
         if api_keys.is_empty() {
             return Err(anyhow!("No Gemini API key is configured."));
@@ -223,6 +209,7 @@ impl ConversationSession {
                     api_key,
                     token_tx.clone(),
                     response_started.clone(),
+                    &settings,
                 )
                 .await
             {
@@ -254,23 +241,23 @@ impl ConversationSession {
         api_key: &str,
         token_tx: mpsc::Sender<String>,
         response_started: Arc<AtomicBool>,
+        settings: &AppSettings,
     ) -> Result<()> {
         let body = json!({
             "contents": history,
             "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 2048
+                "temperature": settings.temperature,
+                "maxOutputTokens": settings.max_output_tokens
             }
         });
 
-        // Fix SSE connection timeout: use connect_timeout instead of global request timeout
         let client = Client::builder()
-            .connect_timeout(Duration::from_secs(12))
+            .connect_timeout(Duration::from_secs(settings.connection_timeout_secs))
             .build()?;
 
         let mut partial_response = String::new();
 
-        for (i, &model_name) in MODELS_TO_TRY.iter().enumerate() {
+        for (i, model_name) in settings.model_order.iter().enumerate() {
             let url = format!(
                 "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
                 model_name
@@ -284,14 +271,15 @@ impl ConversationSession {
                 .header("x-goog-api-key", api_key)
                 .json(&body);
 
-            let res = match tokio::time::timeout(MODEL_RESPONSE_TIMEOUT, req.send()).await {
+            let response_timeout = Duration::from_secs(settings.response_timeout_secs);
+            let res = match tokio::time::timeout(response_timeout, req.send()).await {
                 Err(_) => {
                     let reason = format!(
                         "timed out waiting for a response after {} seconds",
-                        MODEL_RESPONSE_TIMEOUT.as_secs()
+                        response_timeout.as_secs()
                     );
                     warn!("Model {} {}", model_name, reason);
-                    if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                    if let Some(next_model) = settings.model_order.get(i + 1) {
                         info!(
                             "Switching from {} to {} after timeout",
                             model_name, next_model
@@ -305,7 +293,7 @@ impl ConversationSession {
                         "Connection error with {}: {}. Trying the next model.",
                         model_name, e
                     );
-                    if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                    if let Some(next_model) = settings.model_order.get(i + 1) {
                         info!(
                             "Switching from {} to {} after connection failure",
                             model_name, next_model
@@ -331,7 +319,7 @@ impl ConversationSession {
                 );
 
                 if (status.as_u16() == 404 || status.as_u16() == 503 || status.as_u16() == 429)
-                    && i + 1 < MODELS_TO_TRY.len()
+                    && i + 1 < settings.model_order.len()
                 {
                     let reason = match status.as_u16() {
                         404 => "is unavailable",
@@ -341,7 +329,7 @@ impl ConversationSession {
                     info!(
                         "Switching from {} to {} because it {}",
                         model_name,
-                        MODELS_TO_TRY[i + 1],
+                        settings.model_order[i + 1],
                         reason
                     );
                     continue;
@@ -355,14 +343,15 @@ impl ConversationSession {
             let mut overload_error = None;
 
             'read_stream: loop {
-                let chunk_res = match tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()).await
+                let stream_idle_timeout = Duration::from_secs(settings.stream_idle_timeout_secs);
+                let chunk_res = match tokio::time::timeout(stream_idle_timeout, stream.next()).await
                 {
                     Ok(Some(chunk_res)) => chunk_res,
                     Ok(None) => break,
                     Err(_) => {
                         overload_error = Some(format!(
                             "stopped responding for {} seconds",
-                            STREAM_IDLE_TIMEOUT.as_secs()
+                            stream_idle_timeout.as_secs()
                         ));
                         break;
                     }
@@ -423,7 +412,7 @@ impl ConversationSession {
 
             if let Some(message) = overload_error {
                 warn!("Model {} {}; moving to fallback", model_name, message);
-                if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                if let Some(next_model) = settings.model_order.get(i + 1) {
                     partial_response.push_str(&full_accumulated);
                     info!(
                         "Switching from {} to {} after stream failure",
@@ -441,7 +430,7 @@ impl ConversationSession {
 
             if full_accumulated.is_empty() {
                 let reason = "completed without returning text";
-                if let Some(next_model) = MODELS_TO_TRY.get(i + 1) {
+                if let Some(next_model) = settings.model_order.get(i + 1) {
                     warn!("Model {} {}; trying {}", model_name, reason, next_model);
                     info!(
                         "Switching from {} to {} after empty response",
@@ -459,7 +448,7 @@ impl ConversationSession {
             return Ok(());
         }
 
-        Err(anyhow!("All Gemini model endpoints failed"))
+        Err(anyhow!("All configured Gemini model endpoints failed"))
     }
 }
 

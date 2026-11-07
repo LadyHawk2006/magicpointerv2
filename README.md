@@ -114,8 +114,12 @@ title, and user-entered context to requests.
   longest dimension is at most 2048 pixels before sending.
 - Tries a non-empty `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment key first,
   then the saved primary key and remaining saved keys in order.
-- Tries a built-in sequence of Gemini model endpoints when a model is
+- Uses a user-configurable model attempt order when a model is
   unavailable, overloaded, rate-limited, times out, or returns no text.
+- Lets users drag to reorder model attempts, add supported models from the
+  bundled `models.txt` catalog, and remove attempts they do not want.
+- Lets users configure temperature, maximum output tokens, connection timeout,
+  initial response timeout, and stream idle timeout.
 - Avoids switching API keys after response text has already started streaming,
   to avoid mixing partial answers from different keys.
 
@@ -124,6 +128,10 @@ title, and user-entered context to requests.
 Settings include:
 
 - Multiple named Gemini API keys, a selectable primary key, and fallback keys.
+- Gemini model attempt order, including drag-to-reorder and adding models from
+  the bundled `models.txt` catalog.
+- Generation temperature, maximum output tokens, connection timeout,
+  initial-response timeout, and stream-idle timeout.
 - Response font family and size.
 - Overlay opacity.
 - Optional chat background color.
@@ -403,6 +411,27 @@ An environment key, when configured, takes precedence over saved keys. Among
 saved keys, the selected primary is tried first and remaining keys are used as
 fallbacks.
 
+### Gemini request and model settings
+
+- **Model attempt order** controls which configured model is tried first and
+  the fallback sequence. Drag rows to reorder them. Add models from the
+  bundled `models.txt` snapshot, which supplies the picker with entries that
+  advertise `generateContent`; remove models to disable them.
+- Model availability and capabilities are determined by Google's API and the
+  configured key. The bundled snapshot is not refreshed automatically. Some
+  listed models may not support this app's multimodal streaming request.
+- **Temperature** ranges from 0 to 2; **maximum output tokens** ranges from 1
+  to 65,536.
+- **Connection timeout** ranges from 1 to 120 seconds. **Initial response
+  timeout** ranges from 1 to 300 seconds and limits waiting for the HTTP
+  response. **Stream idle timeout** ranges from 1 to 300 seconds and limits
+  how long a response stream may remain silent between chunks.
+- For each key, the app attempts models in order. It falls back for model
+  unavailability (404), rate limiting (429), overload (503 or recognized SSE
+  overload), connection/initial-response timeouts, stream failures/idle
+  timeouts, or an empty text response. Other API errors are returned rather
+  than blindly trying every model.
+
 ### Appearance
 
 - **Font family** controls the text family used for response and message
@@ -423,9 +452,10 @@ GTK and the installed theme.
 Spatial intelligence is **disabled by default**. When enabled, Settings can
 include any of the following with each user request:
 
-- **Hardware information:** operating system, architecture, a CPU model string
-  when available from `/proc/cpuinfo`, and total memory when available from
-  `/proc/meminfo`.
+- **Hardware information:** Linux distribution name/version from
+  `/etc/os-release` (falling back to `/usr/lib/os-release`), kernel release,
+  architecture, a CPU model string when available from `/proc/cpuinfo`, and
+  total memory when available from `/proc/meminfo`.
 - **Active-window title:** the title reported by Hyprland when the initial
   selection is handled.
 - **Custom context:** text supplied by the user.
@@ -460,6 +490,23 @@ The settings schema currently includes the following fields:
 {
   "api_keys": [],
   "primary_api_key_id": null,
+  "model_order": [
+    "gemini-3.1-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash"
+  ],
+  "max_output_tokens": 2048,
+  "temperature": 0.2,
+  "connection_timeout_secs": 12,
+  "response_timeout_secs": 20,
+  "stream_idle_timeout_secs": 20,
   "font_family": "system-ui",
   "font_size": 13.0,
   "overlay_opacity": 0.96,
@@ -476,8 +523,11 @@ The settings schema currently includes the following fields:
 
 `api_keys` contains metadata records with an internal ID and a display name;
 the key secret itself is stored separately in Secret Service. Settings are
-normalized on load: font size is bounded from 10 to 40 points and overlay
-opacity from 0.25 to 1.0.
+normalized on load: font size is bounded from 10 to 40 points, overlay
+opacity from 0.25 to 1.0, temperature from 0 to 2, output tokens from 1 to
+65,536, connection timeout from 1 to 120 seconds, and initial-response and
+stream-idle timeouts from 1 to 300 seconds. An empty model order restores the
+default order.
 
 ### What is sent to Google
 
@@ -567,7 +617,7 @@ magicpointerv2/
 | `src/executor.rs` | Clipboard text copy operation. |
 | `src/bin/list_models.rs` | Utility binary that calls Gemini's models endpoint using configured API keys and prints the response. |
 | `build.rs` | GTK4 Layer Shell linker configuration. |
-| `models.txt` | A saved model-list response snapshot; it is not loaded by the application. The active request fallback order is defined in `src/ai_agent.rs`. |
+| `models.txt` | A saved model-list response snapshot bundled into the application and parsed as the Settings model picker catalog. The selected attempt order is persisted in settings. |
 
 ## Development and testing
 
@@ -591,8 +641,8 @@ cargo test --all-targets
 
 The tests cover areas such as Gemini SSE event parsing, image payload resizing
 and encoding, multi-image conversation requests, prompt positioning around
-monitor edges, settings normalization, API-key ordering, and spatial-context
-composition.
+monitor edges, settings normalization, model-catalog filtering, API-key
+ordering, Linux os-release parsing, and spatial-context composition.
 
 To query the model list endpoint with a configured API key:
 
@@ -625,14 +675,10 @@ runtime stylesheet parsing.
 - **No OCR or automated desktop actions:** captured context is sent to Gemini
   for interpretation, but this application does not itself automate clicks,
   type into other applications, or run model-proposed commands.
-- **No settings for model selection:** the current model fallback order is
-  maintained in code rather than exposed in Settings.
-- **Fixed model fallback order:** requests try
-  `gemini-3.1-flash-lite`, `gemini-flash-lite-latest`,
-  `gemini-3.5-flash-lite`, `gemini-2.5-flash-lite`,
-  `gemini-flash-latest`, `gemini-3.8-flash`, `gemini-3.7-flash`,
-  `gemini-3.6-flash`, `gemini-3.5-flash`, and `gemini-2.5-flash` in that
-  order. Availability depends on Google's API and the configured key.
+- **Static model picker catalog:** Settings candidates come from the bundled
+  `models.txt` snapshot and are not refreshed from Google's API automatically.
+  Models may be unavailable to a particular key or incompatible with image
+  input or streaming.
 - **Compositor controls regular chat-window placement:** the response window
   is a normal Wayland window. The compositor controls its floating placement;
   it is not guaranteed to open beside the selected region.

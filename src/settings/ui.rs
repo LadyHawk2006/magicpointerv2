@@ -46,6 +46,104 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     status.add_css_class("settings-status");
     content.append(&status);
 
+    let request_section = section("Gemini request");
+    let model_note = gtk4::Label::new(Some(
+        "Drag models to change fallback order. Models are tried in this order when the previous model is unavailable, rate-limited, overloaded, times out, or returns no text.",
+    ));
+    model_note.set_xalign(0.0);
+    model_note.set_wrap(true);
+    model_note.add_css_class("dim-label");
+    request_section.append(&model_note);
+
+    let model_order = Rc::new(RefCell::new(shared.borrow().model_order.clone()));
+    let model_rows = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
+    let model_rows_scroll = gtk4::ScrolledWindow::new();
+    model_rows_scroll.set_min_content_height(120);
+    model_rows_scroll.set_max_content_height(220);
+    model_rows_scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+    model_rows_scroll.set_child(Some(&model_rows));
+    request_section.append(&model_rows_scroll);
+    rebuild_model_rows(&model_order, &model_rows, &status);
+
+    let model_catalog = match settings::available_models() {
+        Ok(models) => models,
+        Err(error) => {
+            status.set_text(&format!("Could not load models.txt catalog: {error}"));
+            Vec::new()
+        }
+    };
+    let model_picker_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let model_picker = gtk4::ComboBoxText::new();
+    model_picker.set_hexpand(true);
+    for (model_id, display_name) in &model_catalog {
+        model_picker.append(Some(model_id), &format!("{display_name} ({model_id})"));
+    }
+    if let Some((model_id, _)) = model_catalog.first() {
+        model_picker.set_active_id(Some(model_id));
+    }
+    let add_model = gtk4::Button::with_label("Add model");
+    add_model.set_sensitive(!model_catalog.is_empty());
+    model_picker_row.append(&model_picker);
+    model_picker_row.append(&add_model);
+    request_section.append(&model_picker_row);
+
+    let add_model_order = model_order.clone();
+    let add_model_rows = model_rows.clone();
+    let add_model_status = status.clone();
+    let add_model_picker = model_picker.clone();
+    add_model.connect_clicked(move |_| {
+        let Some(model_id) = add_model_picker.active_id().map(|id| id.to_string()) else {
+            add_model_status.set_text("Choose a model to add.");
+            return;
+        };
+        let mut order = add_model_order.borrow_mut();
+        if order.contains(&model_id) {
+            add_model_status.set_text("That model is already in the attempt order.");
+            return;
+        }
+        order.push(model_id.clone());
+        drop(order);
+        rebuild_model_rows(&add_model_order, &add_model_rows, &add_model_status);
+        add_model_status.set_text("Model added. Save settings to use the new order.");
+    });
+
+    let max_output_tokens = gtk4::SpinButton::with_range(1.0, 65_536.0, 1.0);
+    max_output_tokens.set_value(shared.borrow().max_output_tokens as f64);
+    request_section.append(&labeled_row(
+        "Maximum output tokens",
+        max_output_tokens.clone().upcast(),
+    ));
+
+    let temperature = gtk4::SpinButton::with_range(0.0, 2.0, 0.05);
+    temperature.set_digits(2);
+    temperature.set_value(shared.borrow().temperature);
+    request_section.append(&labeled_row(
+        "Temperature (0–2)",
+        temperature.clone().upcast(),
+    ));
+
+    let connection_timeout = gtk4::SpinButton::with_range(1.0, 120.0, 1.0);
+    connection_timeout.set_value(shared.borrow().connection_timeout_secs as f64);
+    request_section.append(&labeled_row(
+        "Connection timeout (seconds)",
+        connection_timeout.clone().upcast(),
+    ));
+
+    let response_timeout = gtk4::SpinButton::with_range(1.0, 300.0, 1.0);
+    response_timeout.set_value(shared.borrow().response_timeout_secs as f64);
+    request_section.append(&labeled_row(
+        "Initial response timeout (seconds)",
+        response_timeout.clone().upcast(),
+    ));
+
+    let stream_idle_timeout = gtk4::SpinButton::with_range(1.0, 300.0, 1.0);
+    stream_idle_timeout.set_value(shared.borrow().stream_idle_timeout_secs as f64);
+    request_section.append(&labeled_row(
+        "Stream idle timeout (seconds)",
+        stream_idle_timeout.clone().upcast(),
+    ));
+    content.append(&request_section);
+
     let key_section = section("Gemini API keys");
     let key_note = gtk4::Label::new(Some(
         "Keys are stored in the system keyring. The primary key is tried first; the others are fallbacks.",
@@ -242,6 +340,7 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
 
     let save_shared = shared.clone();
     let save_rows = rows.clone();
+    let save_model_order = model_order.clone();
     let save_app = app.clone();
     let save_status = status.clone();
     save.connect_clicked(move |_| {
@@ -264,6 +363,16 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
             }
         }
 
+        draft.model_order = save_model_order.borrow().clone();
+        if draft.model_order.is_empty() {
+            save_status.set_text("Keep at least one Gemini model in the attempt order.");
+            return;
+        }
+        draft.max_output_tokens = max_output_tokens.value_as_int().max(1) as u32;
+        draft.temperature = temperature.value();
+        draft.connection_timeout_secs = connection_timeout.value_as_int().max(1) as u64;
+        draft.response_timeout_secs = response_timeout.value_as_int().max(1) as u64;
+        draft.stream_idle_timeout_secs = stream_idle_timeout.value_as_int().max(1) as u64;
         draft.font_family = font_family.text().trim().to_string();
         if draft.font_family.is_empty() {
             save_status.set_text("Font family cannot be empty.");
@@ -301,6 +410,105 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     });
 
     window.present();
+}
+
+fn rebuild_model_rows(
+    model_order: &Rc<RefCell<Vec<String>>>,
+    container: &gtk4::Box,
+    status: &gtk4::Label,
+) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+
+    let models = model_order.borrow().clone();
+    for (index, model_id) in models.iter().enumerate() {
+        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+        row.add_css_class("model-order-row");
+
+        let drag_handle = gtk4::Label::new(Some("↕"));
+        drag_handle.set_tooltip_text(Some("Drag to reorder"));
+        drag_handle.set_cursor_from_name(Some("grab"));
+        row.append(&drag_handle);
+
+        let model_label = gtk4::Label::new(Some(&format!("{}. {}", index + 1, model_id)));
+        model_label.set_xalign(0.0);
+        model_label.set_selectable(true);
+        model_label.set_hexpand(true);
+        row.append(&model_label);
+
+        let remove = gtk4::Button::from_icon_name("list-remove-symbolic");
+        remove.set_tooltip_text(Some("Remove model from attempt order"));
+        remove.set_sensitive(models.len() > 1);
+        row.append(&remove);
+        container.append(&row);
+
+        let drag_source = gtk4::DragSource::new();
+        drag_source.set_actions(gtk4::gdk::DragAction::MOVE);
+        let dragged_model = model_id.clone();
+        drag_source.connect_prepare(move |_, _, _| {
+            let value = dragged_model.to_value();
+            Some(gtk4::gdk::ContentProvider::for_value(&value))
+        });
+        drag_handle.add_controller(drag_source);
+
+        let drop_target = gtk4::DropTarget::new(String::static_type(), gtk4::gdk::DragAction::MOVE);
+        let order_on_drop = model_order.clone();
+        let rows_on_drop = container.downgrade();
+        let status_on_drop = status.clone();
+        let target_row = row.downgrade();
+        let target_model = model_id.clone();
+        drop_target.connect_drop(move |_, value, _, y| {
+            let Ok(dragged_model) = value.get::<String>() else {
+                return false;
+            };
+            let Some(container) = rows_on_drop.upgrade() else {
+                return false;
+            };
+            let mut order = order_on_drop.borrow_mut();
+            let Some(from) = order.iter().position(|model| model == &dragged_model) else {
+                return false;
+            };
+            let Some(to) = order.iter().position(|model| model == &target_model) else {
+                return false;
+            };
+
+            let drop_after = target_row
+                .upgrade()
+                .is_some_and(|row| row.height() > 0 && y >= row.height() as f64 / 2.0);
+            let mut destination = to + usize::from(drop_after);
+            let moved_model = order.remove(from);
+            if from < destination {
+                destination -= 1;
+            }
+            destination = destination.min(order.len());
+            order.insert(destination, moved_model);
+            drop(order);
+
+            rebuild_model_rows(&order_on_drop, &container, &status_on_drop);
+            status_on_drop.set_text("Model order changed. Save settings to apply it.");
+            true
+        });
+        row.add_controller(drop_target);
+
+        let order_on_remove = model_order.clone();
+        let rows_on_remove = container.downgrade();
+        let status_on_remove = status.clone();
+        let removed_model = model_id.clone();
+        remove.connect_clicked(move |_| {
+            let mut order = order_on_remove.borrow_mut();
+            if order.len() <= 1 {
+                status_on_remove.set_text("Keep at least one Gemini model in the attempt order.");
+                return;
+            }
+            order.retain(|model| model != &removed_model);
+            drop(order);
+            if let Some(container) = rows_on_remove.upgrade() {
+                rebuild_model_rows(&order_on_remove, &container, &status_on_remove);
+            }
+            status_on_remove.set_text("Model removed. Save settings to apply the change.");
+        });
+    }
 }
 
 fn rebuild_key_rows(

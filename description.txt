@@ -25,11 +25,13 @@ The central interaction is explicit and user initiated:
   5. Send the image and prompt to Gemini.
   6. Read the streamed response and optionally continue the conversation.
 
-The application is designed around the Arch Linux / Hyprland / Wayland
-environment. It reads compositor state through Hyprland IPC, uses GTK4 Layer
-Shell surfaces for screen-space overlays, and captures pixels through
-libwayshot. This is not currently a portable abstraction over multiple
-compositors or an X11 implementation.
+The application targets Linux with Hyprland and Wayland and is developed
+primarily on Arch Linux. It reads compositor state through Hyprland IPC, uses
+GTK4 Layer Shell surfaces for screen-space overlays, and captures pixels
+through libwayshot. Spatial hardware context detects the installed
+distribution from os-release files; it does not report Arch merely because
+that is the development environment. The desktop integration is not currently
+a portable abstraction over multiple compositors or an X11 implementation.
 
 The experience is an application run, not a background service. There is no
 always-running daemon, screen monitoring, automatic capture, periodic upload,
@@ -140,6 +142,16 @@ button also opens settings. The settings UI supports:
 
   - Multiple named Gemini API keys, a selected primary key, fallbacks, rename,
     and removal.
+  - An ordered Gemini model attempt list that can be changed by drag and drop.
+    Models supporting generateContent in the bundled models.txt catalog can
+    be added to the list; unwanted entries can be removed.
+  - Temperature, maximum output tokens, connection timeout, initial response
+    timeout, and stream idle timeout.
+    Defaults are temperature 0.2, 2048 output tokens, and timeouts of 12
+    seconds to connect and 20 seconds for initial response or stream idle.
+    Temperature is bounded from 0 to 2, output tokens from 1 to 65,536,
+    connection timeout from 1 to 120 seconds, and both waiting timeouts from
+    1 to 300 seconds.
   - Font family and response font size (normalized to 10 to 40 points).
   - Overlay opacity (normalized to 0.25 to 1.0).
   - Optional chat background color.
@@ -149,10 +161,13 @@ button also opens settings. The settings UI supports:
 
 Spatial intelligence is disabled by default. When enabled, selected context
 is composed into each submitted prompt; it is not an implicit screen scanner.
-The hardware summary reads operating system and architecture constants plus
-available CPU and total-memory fields from /proc/cpuinfo and /proc/meminfo.
-The active-window title is obtained from the Hyprland state associated with
-the initial selection. User-entered context is attached when nonblank.
+The hardware summary reads the distribution display name/version from
+/etc/os-release, falling back to /usr/lib/os-release, plus the kernel release
+from /proc/sys/kernel/osrelease, architecture, available CPU data from
+/proc/cpuinfo, and total memory from /proc/meminfo. Missing values are reported
+as unavailable. The active-window title is obtained from the Hyprland state
+associated with the initial selection. User-entered context is attached when
+nonblank.
 
 If no usable API key is found on normal startup, a first-run GTK dialog guides
 the user to Google AI Studio and accepts a key. The app uses an external
@@ -227,11 +242,12 @@ Base64 encoded and placed in Gemini inline_data parts with MIME type image/jpeg.
 
 The app posts JSON to the Gemini v1beta
 streamGenerateContent?alt=sse endpoint and sends the key in the
-x-goog-api-key header. The generation configuration currently sets temperature
-to 0.2 and maxOutputTokens to 2048. User and model turns are stored using
-Gemini's contents/role/parts shape. No API key is embedded in the request URL.
+x-goog-api-key header. The generation configuration uses the saved temperature
+and maxOutputTokens values (defaults 0.2 and 2048). User and model turns are
+stored using Gemini's contents/role/parts shape. No API key is embedded in the
+request URL.
 
-The current built-in model attempt order is:
+The default model attempt order preserves the prior behavior:
 
   1. gemini-3.1-flash-lite
   2. gemini-flash-lite-latest
@@ -244,12 +260,21 @@ The current built-in model attempt order is:
   9. gemini-3.5-flash
  10. gemini-2.5-flash
 
-This list is compiled into the source; it is not currently configurable in the
-settings UI. A request has a 12-second connection timeout and a 20-second
-timeout waiting for a model response. Stream reads use a 20-second idle
-timeout. HTTP 404, 429, and 503 responses, connection/response timeouts,
-recognized overload stream errors, and empty model output may advance to the
-next model. Other API errors are returned.
+Users can reorder, add, or remove attempts in Settings. The candidate picker
+reads the bundled models.txt snapshot and offers entries whose advertised
+supportedGenerationMethods include generateContent. It is not a live query;
+Google may change availability, and not every listed model necessarily accepts
+the app's image-and-streaming request.
+
+Timeouts are persisted separately: connect timeout defaults to 12 seconds and
+is configurable from 1 to 120; initial response timeout defaults to 20 seconds
+and stream idle timeout defaults to 20 seconds, each configurable from 1 to
+300. The initial response wait wraps request startup/response acquisition, so
+the effective deadline is also bounded by the connection timeout. Stream
+reads use the configured idle timeout. HTTP 404, 429, and 503 responses,
+connection/response timeouts, recognized overload stream errors, stream
+failures/idle timeouts, and empty model output may advance to the next model.
+Other API errors are returned.
 
 SSE parsing accepts LF and CRLF event boundaries, joins multiple data lines,
 handles [DONE], and extracts candidate text parts. An overloaded model may
@@ -314,7 +339,8 @@ src/auth.rs and src/auth_setup.rs
 
 src/settings/
   mod.rs defines AppSettings and ApiKeyRecord, JSON persistence, keyring
-  operations, normalization, and primary/fallback ordering. appearance.rs
+  operations, normalization, model-catalog parsing, and primary/fallback
+  ordering. appearance.rs
   applies font, opacity, background, and user CSS. context.rs composes the
   opt-in spatial context. ui.rs creates and wires the GTK settings window.
 
@@ -335,8 +361,9 @@ src/bin/list_models.rs
   Developer utility for querying the available Gemini models endpoint.
 
 models.txt
-  A saved model-list response snapshot. It is not the active model
-  configuration and is not loaded by the application.
+  A saved model-list response snapshot bundled and parsed for the Settings
+  model picker. The user's active model attempt order is stored in settings;
+  the catalog is not refreshed automatically.
 
 
 6. TECHNOLOGIES AND FRAMEWORKS
@@ -395,10 +422,11 @@ Settings are stored at $XDG_CONFIG_HOME/magicpointerv2/settings.json, or
 ~/.config/magicpointerv2/settings.json when XDG_CONFIG_HOME is unset. The file
 contains preferences and API-key metadata (IDs and display names), not API-key
 values. It is written with user-only permissions and replaced via a temporary
-file and rename. API key values are stored in the user's Secret Service
-keyring under the magicpointerv2 service label. This requires secret-tool and
-a working keyring provider. The application also supports the two API-key
-environment variables described above.
+file and rename. It also stores the ordered model IDs, generation controls,
+and network timeout values. API key values are stored in the user's Secret
+Service keyring under the magicpointerv2 service label. This requires
+secret-tool and a working keyring provider. The application also supports the
+two API-key environment variables described above.
 
 During use, capture buffers, markup, and conversation history remain in
 process memory. To answer a request, the selected image or images and user
@@ -425,7 +453,9 @@ needed by GTK4, GTK4 Layer Shell, and transitive dependencies.
   - No click, keyboard, clipboard-paste, or command execution against target
     applications. Clipboard support is for copying assistant text/code.
   - No persistent chat history or local screenshot archive.
-  - No user-facing model-selection setting; model order is source-defined.
+  - The model picker uses a static bundled catalog snapshot; it is not
+    automatically refreshed, and catalog entries may not support multimodal
+    streaming or be available to every API key.
   - No guaranteed response-card placement beside the selected region.
   - No installer/package definition is currently included in this repository.
 
@@ -434,8 +464,9 @@ needed by GTK4, GTK4 Layer Shell, and transitive dependencies.
 
 The project has unit tests for logic including selection geometry and
 window cycling, prompt placement, settings normalization and key ordering,
-spatial-context composition, image encoding/resizing, multiple-image request
-construction, and Gemini SSE parsing.
+model-catalog parsing, detected operating-system context, spatial-context
+composition, image encoding/resizing, multiple-image request construction,
+and Gemini SSE parsing.
 
 Typical developer commands:
 

@@ -38,6 +38,16 @@ pub fn compose_spatial_prompt(
 }
 
 fn hardware_summary() -> String {
+    let distribution = fs::read_to_string("/etc/os-release")
+        .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
+        .ok()
+        .and_then(|contents| parse_os_release(&contents))
+        .unwrap_or_else(|| "unavailable".to_string());
+    let kernel = fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map(|release| release.trim().to_string())
+        .ok()
+        .filter(|release| !release.is_empty())
+        .unwrap_or_else(|| "unavailable".to_string());
     let cpu = fs::read_to_string("/proc/cpuinfo")
         .ok()
         .and_then(|contents| {
@@ -61,12 +71,59 @@ fn hardware_summary() -> String {
         .unwrap_or_else(|| "unavailable".to_string());
 
     format!(
-        "Hardware: {} {}, CPU: {}, Memory: {}",
-        std::env::consts::OS,
+        "System: {}, Kernel: {}, Architecture: {}, CPU: {}, Memory: {}",
+        distribution,
+        kernel,
         std::env::consts::ARCH,
         cpu,
         memory
     )
+}
+
+fn parse_os_release(contents: &str) -> Option<String> {
+    let mut name = None;
+    let mut version = None;
+    let mut pretty_name = None;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, raw_value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = unquote_os_release_value(raw_value.trim());
+        match key {
+            "PRETTY_NAME" => pretty_name = Some(value),
+            "NAME" => name = Some(value),
+            "VERSION_ID" => version = Some(value),
+            _ => {}
+        }
+    }
+
+    pretty_name.filter(|value| !value.is_empty()).or_else(|| {
+        let name = name.filter(|value| !value.is_empty())?;
+        match version.filter(|value| !value.is_empty()) {
+            Some(version) => Some(format!("{name} {version}")),
+            None => Some(name),
+        }
+    })
+}
+
+fn unquote_os_release_value(value: &str) -> String {
+    if let Some(value) = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    {
+        return value.replace("\\\"", "\"").replace("\\\\", "\\");
+    }
+    if let Some(value) = value
+        .strip_prefix('\'')
+        .and_then(|value| value.strip_suffix('\''))
+    {
+        return value.to_string();
+    }
+    value.to_string()
 }
 
 #[cfg(test)]
@@ -102,8 +159,35 @@ mod tests {
         settings.spatial.attach_hardware_info = true;
 
         let prompt = compose_spatial_prompt(&settings, None, "Question");
-        assert!(prompt.contains("Hardware:"));
+        assert!(prompt.contains("System:"));
+        assert!(prompt.contains("Kernel:"));
         assert!(prompt.contains(std::env::consts::ARCH));
         assert!(prompt.ends_with("User request:\nQuestion"));
+    }
+
+    #[test]
+    fn os_release_uses_actual_pretty_name_instead_of_a_distribution_assumption() {
+        assert_eq!(
+            parse_os_release(
+                "NAME=\"Fedora Linux\"\nVERSION_ID=43\nPRETTY_NAME=\"Fedora Linux 43 (Workstation Edition)\"\n"
+            ),
+            Some("Fedora Linux 43 (Workstation Edition)".to_string())
+        );
+    }
+
+    #[test]
+    fn os_release_falls_back_to_name_and_version() {
+        assert_eq!(
+            parse_os_release("NAME='Debian GNU/Linux'\nVERSION_ID=\"13\"\n"),
+            Some("Debian GNU/Linux 13".to_string())
+        );
+    }
+
+    #[test]
+    fn os_release_unquotes_escaped_values() {
+        assert_eq!(
+            parse_os_release("PRETTY_NAME=\"Linux \\\"Example\\\" \\\\ OS\"\n"),
+            Some("Linux \"Example\" \\ OS".to_string())
+        );
     }
 }

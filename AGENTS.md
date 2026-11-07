@@ -22,6 +22,10 @@ The application currently:
 - Stores preferences and API-key metadata in JSON and API-key values in Secret
   Service using `secret-tool`. The app intentionally invokes that executable;
   it is not a zero-subprocess application.
+- Supports saved model attempt ordering, request-generation settings, and
+  connection/response/stream-idle timeouts. Spatial hardware context reads the
+  installed Linux distribution from os-release files instead of assuming
+  Arch.
 
 See [README.md](./README.md) for user-facing setup and behavior, and
 [description.txt](./description.txt) for the detailed scope, architecture,
@@ -69,8 +73,10 @@ overlay.
   screenshots or conversations unless explicitly requested.
 - Spatial context is opt-in and disabled by default. Preserve that default and
   do not attach extra context unless the relevant settings enable it.
-- The Gemini model list is hard-coded in `src/ai_agent.rs`; `models.txt` is a
-  reference snapshot, not runtime configuration.
+- `models.txt` is a bundled model-picker catalog; the user's ordered model
+  attempts and generation/timeout settings are persisted in `AppSettings`.
+- Spatial context is opt-in. The detected OS name comes from `/etc/os-release`
+  or `/usr/lib/os-release`; do not replace it with a fixed distribution name.
 - Keep documentation accurate: environment keys precede saved keys; saved
   primary key precedes saved fallbacks; model fallback behavior is implemented
   in `src/ai_agent.rs`.
@@ -86,9 +92,10 @@ cargo test --all-targets
 ```
 
 The test suite includes unit tests for selection geometry, prompt positioning,
-settings and key ordering, spatial context, image preparation, and SSE parsing.
-UI execution and screen-capture validation require a graphical Wayland session
-with Hyprland, GTK4 Layer Shell, and the required screencopy protocol.
+settings normalization, model-catalog filtering, key ordering, OS-release
+parsing, spatial context, image preparation, and SSE parsing. UI execution and
+screen-capture validation require a graphical Wayland session with Hyprland,
+GTK4 Layer Shell, and the required screencopy protocol.
 
 Builds require a Rust toolchain supporting edition 2024, Cargo, a C toolchain,
 pkg-config, GTK4 and GTK4 Layer Shell development libraries, and the native
