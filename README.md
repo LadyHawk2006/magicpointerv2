@@ -59,7 +59,7 @@ title, and user-entered context to requests.
 
 ![Magic Pointer first-run screen guiding the user to connect a Gemini API key](./Assets/screenshots/0011.png)
 
-### Capture prompt and quick actions
+### Masked API key during first setup
 
 ![Capture preview and cursor-adjacent prompt composer with quick-action chips](./Assets/screenshots/0013.png)
 
@@ -325,11 +325,24 @@ cd magicpointerv2
 
 The [`Assets/`](./Assets/) directory
 contains the freedesktop launcher and AppStream component metadata. The
-launcher uses the themed icon name `com.magicpointerv2.tool`; the project icon
-artwork (`icon.png` and `icon.svg`) is not included yet and can be added there
-before packaging. Installers should install the icon under the
+launcher uses the themed icon name `com.magicpointerv2.tool`; the scalable
+vector icon is included. Installers should install the icon under the
 `com.magicpointerv2.tool` icon name and place the desktop and metainfo files in
 the system's standard application and AppStream locations.
+
+An Arch Linux `PKGBUILD` is provided for installing the prebuilt x86_64
+release binary together with the desktop entry, SVG icon, and AppStream
+metadata. The recipe downloads all package inputs from the pinned release tag,
+so it can be used from a folder containing only the `PKGBUILD`; a repository
+checkout and local `Assets/` directory are not required. Install it with:
+
+```sh
+makepkg -si
+```
+
+The package depends on Hyprland, GTK4, GTK4 Layer Shell, Wayland/GBM, and
+`libsecret` (`secret-tool`). A working Secret Service provider, such as
+GNOME Keyring or KeePassXC, is also needed to save Gemini API keys.
 
 Build and run the development version:
 
@@ -629,6 +642,16 @@ the user's shell or process-management setup; use them with appropriate care.
 
 ```text
 magicpointerv2/
+├── Assets/
+│   ├── com.magicpointerv2.tool.desktop
+│   ├── com.magicpointerv2.tool.metainfo.xml
+│   ├── icon.svg
+│   ├── icon.jpeg
+│   └── screenshots/
+├── LICENSE
+├── PKGBUILD
+├── README.md
+├── description.txt
 ├── Cargo.toml
 ├── Cargo.lock
 ├── build.rs
@@ -759,11 +782,11 @@ runtime stylesheet parsing.
   it is not guaranteed to open beside the selected region.
 - **Keyring dependency:** storing and reading saved API keys depends on
   `secret-tool` and an available Secret Service.
-- **No installer or package definition:** this repository currently provides
-  Cargo sources and build instructions, not a distribution package.
+- **Limited distribution packaging:** an Arch Linux `PKGBUILD` is provided
+  for the prebuilt x86_64 release. Other distributions and source-package
+  workflows do not yet have dedicated package definitions.
 
 ## License
 
-No `LICENSE` file or package license declaration is currently present in this
-repository. Do not assume reuse or redistribution terms; a license must be
-chosen and added by the project owner.
+This project is distributed under the MIT License. See [LICENSE](./LICENSE)
+for the complete license text.
