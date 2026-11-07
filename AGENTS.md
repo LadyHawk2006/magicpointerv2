@@ -1,139 +1,97 @@
-# AGENTS.md
+# Project Guidelines
 
-## Project Vision & Overview
-**Project Codename:** `magicpointerv2`  
-**Target Environment:** Arch Linux | Hyprland (Wayland)  
-**Core Goal:** Build an intent-aware, spatial desktop intelligence pipeline inspired by multimodal vision overlays (e.g., Google's Magic Pointer).
+## Current Project State
 
-The application is implemented in **Rust**. It queries compositor state via IPC, provides GTK4 Wayland layer-shell surfaces for selection and the cursor-adjacent prompt composer, captures visual bounding boxes directly from compositor buffers into RAM via `libwayshot`, and streams multimodal payloads to Gemini. The response is shown in a regular GTK window managed by Hyprland. First-run setup guides users to Google AI Studio and stores Gemini API keys through the Secret Service keyring using `secret-tool`, so the complete application is not zero-subprocess.
+Magic Pointer v2 is a user-triggered Rust desktop application for selecting
+screen content on a Hyprland Wayland session, asking Google's Gemini API about
+it, and viewing the streamed answer in a GTK chat window. Work against the
+implemented behavior; do not treat proposed architecture or future features as
+existing functionality.
 
----
+The application currently:
 
-## System Architecture Blueprint
+- Uses Hyprland IPC for cursor position, window/client geometry, titles, and
+  monitor/workspace information.
+- Uses GTK4 Layer Shell for window/region/full-monitor selection, the prompt
+  composer, and annotation modal; captures selected pixels into memory with
+  libwayshot.
+- Sends user-selected image(s) and text to Gemini over HTTPS using reqwest and
+  SSE streaming. There is no local model, daemon, or persistent chat history.
+- Displays responses in a regular GTK4 window. The compositor controls its
+  placement; it is not guaranteed to appear beside the selection.
+- Stores preferences and API-key metadata in JSON and API-key values in Secret
+  Service using `secret-tool`. The app intentionally invokes that executable;
+  it is not a zero-subprocess application.
 
-```
-[ System Trigger (Wiggle detection / Hotkey / Script) ]
-           │
-           ▼
-┌───────────────────────────────────────────────────────────┐
-│ magicpointerv2 Binary Invocation                          │
-│                                                           │
-│  1. Spatial Selection (GTK4 Layer-Shell Selection Canvas) │
-│     └── Fullscreen transparent overlay                    │
-│     └── Interactive box drag, corner highlights, esc exit │
-│                                                           │
-│  2. In-Memory Frame Capture (libwayshot)                  │
-│     └── Direct wlr-screencopy to RAM buffer (image crate) │
-│     └── No screenshot file required                      │
-│                                                           │
-│  3. Cursor-Adjacent Prompt (GTK4 Layer-Shell)             │
-│     └── Prominent thumbnail, question field, send         │
-│     └── Position near cursor; flip/clamp to monitor bounds│
-│                                                           │
-│  4. Gemini Streaming (reqwest/SSE)                        │
-│     └── Resize/JPEG encode capture and send with prompt   │
-│     └── Stream answer to the regular chat window          │
-└───────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌───────────────────────────────────────────────────────────┐
-│ Native GTK Response Window                               │
-│  - Normal Wayland window managed by Hyprland             │
-│  - Floating, sizing, opacity and placement via rules     │
-│  - Real-time Markdown response & action buttons           │
-└───────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌───────────────────────────────────────────────────────────┐
-│ Execution Pipeline                                        │
-│  - Clipboard staging (arboard / native Wayland clipboard) │
-│  - Target injection / dismissal                           │
-└───────────────────────────────────────────────────────────┘
-```
+See [README.md](./README.md) for user-facing setup and behavior, and
+[description.txt](./description.txt) for the detailed scope, architecture,
+implementation map, and technology overview. Keep those descriptions aligned
+with code changes.
 
----
+## Architecture and Boundaries
 
-## Technical Stack & Dependencies
+- `src/main.rs` orchestrates startup, settings/credential setup, selection,
+  capture, prompt, and chat.
+- `src/selection_overlay/` implements selection modes, Hyprland window
+  targeting, cycling, geometry, snapping, and Cairo rendering.
+- `src/hypr_ipc.rs` queries Hyprland. `src/screencapture.rs` captures a logical
+  screen rectangle with libwayshot.
+- `src/prompt_overlay/` implements cursor-adjacent placement, prompt entry,
+  quick actions, and in-memory annotation.
+- `src/ui/` builds the normal GTK chat window, attachment flow, Markdown
+  presentation, and response indicator.
+- `src/ai_agent.rs` owns image encoding, in-memory conversation history,
+  Gemini request/fallback behavior, and SSE parsing.
+- `src/settings/` owns settings persistence, Secret Service access, appearance,
+  opt-in spatial context, and settings UI. `src/auth.rs` resolves environment
+  and saved keys.
+- `src/styles/` bundles GTK CSS at compile time. The user-provided CSS setting
+  is separate.
 
-### Core Runtime & System Libraries
-* **Language Runtime:** Rust (2024 edition or latest stable, `tokio` async runtime)
-* **Compositor IPC:** `hyprland-rs` (querying Hyprland's request socket for cursor coordinates, active window geometry, monitors)
-* **Screen Selection Overlay:** Native `gtk4` + `gtk4-layer-shell-rs` transient drawing area (interactive drag-selection and window snap, replacing `slurp`)
-* **In-Memory Screencopy:** `libwayshot` (direct `zwlr_screencopy_v1` capture into `image::DynamicImage` / `RgbaImage` buffers, replacing `grim`)
-* **Multimodal Client:** `reqwest` (with `stream` & TLS support) targeting Gemini API endpoints via SSE
-* **Response Window:** Native GTK4 window managed by Hyprland window rules; the selection canvas remains a GTK4 layer-shell surface.
-* **Prompt Composer:** Compact GTK4 layer-shell surface positioned by the cursor monitor's geometry and edge-aware margins.
-* **Clipboard Control:** `arboard` (cross-platform / Wayland clipboard crate)
+Keep GTK widget access on the GTK/GLib main thread. Run network work on the
+existing Tokio runtime and deliver response chunks to the UI through channels
+or the established GLib integration; do not block the GTK event loop.
+Hyprland and GTK Layer Shell are current platform dependencies, not optional
+abstractions. Do not describe the regular response window as a layer-shell
+overlay.
 
----
+## Implementation Conventions
 
-## Module Breakdown & Development Phases
+- Follow existing Rust patterns and module ownership. Prefer focused changes
+  that preserve current UX and error handling.
+- Use `cargo fmt --all` for formatting. Keep types explicit and handle
+  fallible operations with contextual errors or established logging; avoid
+  silent fallbacks and broad catches.
+- Keep credentials, captured image contents, and sensitive user context out of
+  logs. Preserve the current separation between settings metadata and keyring
+  secret values.
+- Captures and chat history are in memory. Do not add disk persistence for
+  screenshots or conversations unless explicitly requested.
+- Spatial context is opt-in and disabled by default. Preserve that default and
+  do not attach extra context unless the relevant settings enable it.
+- The Gemini model list is hard-coded in `src/ai_agent.rs`; `models.txt` is a
+  reference snapshot, not runtime configuration.
+- Keep documentation accurate: environment keys precede saved keys; saved
+  primary key precedes saved fallbacks; model fallback behavior is implemented
+  in `src/ai_agent.rs`.
 
-### Phase 1: IPC & Native Spatial Target Selection
-* **Goal:** Query Hyprland state and provide a seamless, native selection interface without external CLI dependencies.
-* **Modules to Implement:**
-  * `hypr_ipc.rs`: Connects to Hyprland's request socket via `hyprland-rs` to inspect active window geometry `(x, y, w, h)`, window class, title, and current cursor position on demand.
-  * `selection_overlay.rs`: Transient fullscreen `gtk4-layer-shell` canvas supporting:
-    * Interactive drag-to-select bounding box via `GestureDrag` and custom Cairo drawing.
-    * Instant window-snap mode leveraging geometry from `hypr_ipc.rs`.
-    * Yields target coordinates `(x, y, w, h)` directly to the capture pipeline.
-  * `prompt_overlay.rs`: Cursor-adjacent GTK4 layer-shell prompt with a capture thumbnail, text entry, Enter/send submission, and Escape dismissal. The prompt chooses the monitor containing the cursor and flips/clamps its position against that monitor's edges.
+## Build and Test
 
-### Phase 2: Native In-Memory Screencopy
-* **Goal:** Capture targeted screen pixels directly into memory buffers with zero disk writes and zero subprocess overhead.
-* **Modules to Implement:**
-  * `screencapture.rs`: Integrates `libwayshot` to bind to `zwlr_screencopy_v1`, capturing the target geometry directly into an in-memory `image::DynamicImage` or raw RGBA buffer.
+Run the smallest relevant validation for the change. Common project checks:
 
-### Phase 3: Multimodal Streaming Dispatcher
-* **Goal:** Encode the in-memory buffer and prompt intents into a multimodal payload, streaming tokens back with minimal latency.
-* **Modules to Implement:**
-  * `ai_agent.rs`: Asynchronous client using `reqwest` targeting Gemini Flash. Encodes in-memory image bytes (JPEG/PNG) into payload, consumes SSE token streams, and pipes tokens to the UI via `tokio::sync::mpsc` channels.
-
-### Phase 4: Wayland Floating Card & Action Pipeline
-* **Goal:** Ask about the capture in a cursor-adjacent layer-shell composer, then display streaming AI output in a Hyprland-managed chat window.
-* **Modules to Implement:**
-  * `prompt_overlay.rs`: Native GTK4 layer-shell prompt composer positioned near the cursor and kept within the selected monitor's bounds.
-  * `ui.rs`: Native GTK4 response window with CSS styling and pulldown-cmark Markdown rendering. Hyprland manages floating state, placement, opacity, and interactive resizing.
-  * `executor.rs`: Handles quick actions like clipboard copies (via `arboard`) and smooth dismissal/cleanup of overlay windows.
-
-### Persistent Settings
-* `settings.rs` stores preferences under `$XDG_CONFIG_HOME/magicpointerv2/settings.json` (or `~/.config/magicpointerv2/settings.json`) and API key values in the Secret Service keyring.
-* `settings_ui.rs` provides API key management, appearance controls, custom GTK CSS loading, and opt-in spatial context. Open it from the chat gear or by running `magicpointerv2 --settings`.
-* Spatial context is disabled by default. When enabled, selected hardware details, the active window title, and/or user-provided text are attached to every Gemini request.
-
----
-
-## Key Milestone Checklist
-
-- [x] Initialize Cargo workspace with `tokio`, `hyprland-rs`, `libwayshot`, `gtk4`, and `gtk4-layer-shell-rs`.
-- [x] Implement Hyprland IPC client to query `cursorpos` and `activewindow`.
-- [x] Build native GTK4 layer-shell drag-selection overlay yielding `(x, y, w, h)` coordinates.
-- [x] Connect `libwayshot` to capture selected coordinates directly into an in-memory `DynamicImage`.
-- [x] Connect `reqwest` SSE client to Gemini Flash with multimodal image payload.
-- [x] Build native GTK4 response window for Hyprland-managed floating and resizing.
-- [x] Stream AI tokens directly into GTK4 text buffer in real-time.
-- [x] Wire clipboard staging (`arboard`) and add Hyprland keybind trigger in `hyprland.conf`.
-
-### Hyprland response-window rules
-
-Hyprland 0.57 uses a Lua configuration at `~/.config/hypr/hyprland.lua`. The GTK application ID is `com.magicpointerv2.tool`; verify the window's reported class with `hyprctl clients` and adjust the class regex if needed.
-
-Add a window rule to the Lua config to float and center the response card and apply active/inactive opacity. The app supplies its initial size; omit a compositor `size` rule so the window remains interactively resizable:
-
-```lua
-hl.window_rule({
-    match = { class = [[^com\.magicpointerv2\.tool$]] },
-    float = true,
-    center = true,
-    opacity = "0.96 override 0.90 override",
-})
+```sh
+cargo fmt --all -- --check
+cargo check --all-targets
+cargo test --all-targets
 ```
 
-To move and resize floating windows with the mouse, add bindings such as:
+The test suite includes unit tests for selection geometry, prompt positioning,
+settings and key ordering, spatial context, image preparation, and SSE parsing.
+UI execution and screen-capture validation require a graphical Wayland session
+with Hyprland, GTK4 Layer Shell, and the required screencopy protocol.
 
-```lua
-hl.bind("ALT + mouse:272", hl.dsp.window.drag(), { mouse = true })
-hl.bind("ALT + mouse:273", hl.dsp.window.resize(), { mouse = true })
-```
-
-These are Hyprland 0.57 Lua APIs, not legacy `windowrule = ...` directives. Since the response card is a regular Wayland window, the compositor controls its placement; it is not guaranteed to appear adjacent to the selected region.
+Builds require a Rust toolchain supporting edition 2024, Cargo, a C toolchain,
+pkg-config, GTK4 and GTK4 Layer Shell development libraries, and the native
+dependencies of the Rust crates. Runtime keyring use additionally requires
+`secret-tool` and an available Secret Service. Do not add dependencies or
+tooling unless the requested work needs them.

@@ -1,0 +1,448 @@
+MAGIC POINTER V2 - PROJECT OVERVIEW AND TECHNICAL BRIEF
+
+PROJECT IN ONE SENTENCE
+
+Magic Pointer v2 is a user-triggered Linux desktop application that lets a
+person select something visible on a Hyprland Wayland desktop, optionally mark
+up the capture, ask a question about it, and receive a streamed multimodal
+answer from Google's Gemini API in a native GTK chat window.
+
+This file is a project-scope and implementation brief intended to orient
+someone who needs to understand, discuss, maintain, or extend the software. It
+describes the code that exists in this repository, not a future product plan.
+The application is not a persistent desktop agent, does not run a local vision
+model, and does not automate interaction with other applications.
+
+
+1. PROJECT SCOPE AND OPERATING MODEL
+
+The central interaction is explicit and user initiated:
+
+  1. Launch the application, commonly with a user-configured Hyprland hotkey.
+  2. Choose a window, a freeform screen rectangle, or the full monitor.
+  3. Optionally add visual markup to the capture.
+  4. Enter a question or choose a quick-action prompt.
+  5. Send the image and prompt to Gemini.
+  6. Read the streamed response and optionally continue the conversation.
+
+The application is designed around the Arch Linux / Hyprland / Wayland
+environment. It reads compositor state through Hyprland IPC, uses GTK4 Layer
+Shell surfaces for screen-space overlays, and captures pixels through
+libwayshot. This is not currently a portable abstraction over multiple
+compositors or an X11 implementation.
+
+The experience is an application run, not a background service. There is no
+always-running daemon, screen monitoring, automatic capture, periodic upload,
+or persistent conversation store. A chat conversation and its captured image
+buffers live in process memory for the lifetime of that application session.
+Closing the response window ends the application session.
+
+Gemini supplies both image understanding and language generation. The app
+packages user-selected images with text and sends them over HTTPS; it does not
+perform local OCR, invoke a local model, infer actions for other apps, or
+execute model-generated shell commands.
+
+
+2. USER-VISIBLE CAPABILITIES
+
+SCREEN TARGETING
+
+The selection surface is a fullscreen transparent GTK4 Layer Shell overlay
+over the monitor associated with the cursor. It dims the surrounding desktop,
+draws a selection affordance with Cairo, and supports three modes that cycle
+when the user presses Space:
+
+  - Window Snap: Hyprland client geometry is used to find visible windows
+    intersecting the cursor. A hovered window is spotlighted and can be
+    selected with a click. A drag instead creates a custom rectangle.
+  - Region Selection: the user draws a freeform rectangle with the pointer.
+  - Full Monitor: the monitor is highlighted and a click captures the monitor.
+
+If windows overlap under the pointer, Tab and Shift+Tab cycle through them;
+the vertical scroll wheel also cycles the candidates. Custom region selection
+has magnetic alignment to window and monitor edges within 10 logical pixels,
+with guide lines showing active snaps. The overlay displays the active mode,
+selection dimensions, or selected-window information. Escape cancels the
+selection.
+
+Window candidates come from mapped Hyprland clients on active workspaces (and
+pinned windows); the app filters its own surfaces. Window bounds are converted
+to the current monitor's local coordinate space and clipped to that monitor.
+If compositor state is unavailable, the selection overlay can still open, but
+window targeting and cursor-based placement may be limited.
+
+CAPTURE AND PROMPT COMPOSER
+
+The selected logical rectangle is passed to libwayshot, which returns an
+image::DynamicImage buffer in process memory. The application rejects
+zero-width or zero-height capture requests. The ordinary capture flow does not
+write screenshot files.
+
+After capture, a second GTK Layer Shell surface displays a small image preview,
+capture dimensions, a multiline text input, and send controls. Its nominal size
+is 440 by 280 logical pixels, reduced when necessary to fit the chosen monitor.
+Placement is calculated beside the cursor with an 18-pixel gap, flipped to the
+opposite side when the available space is insufficient, and clamped with
+12-pixel edge padding. If Hyprland cursor data is unavailable, the caller uses
+the selected rectangle's lower-right corner as a placement hint. The app also
+falls back to the first display monitor if it cannot find one containing that
+hint.
+
+Enter sends a prompt. Shift+Enter inserts a newline. Escape dismisses the
+composer. Five quick-action chips dispatch preset requests: Explain, Extract
+Code, Debug Error, Summarize, and Translate. Choosing a chip sends immediately
+without requiring text entry.
+
+IMAGE ANNOTATION
+
+The preview or Annotate button opens a monitor-sized layer-shell modal with a
+large canvas, scaled to fit the screen and capped at 1280 by 720 pixels.
+Drawing tools are Pen, Arrow, and Box. Ctrl+Z removes the most recent mark;
+Clear removes all marks. Done, Enter, or Escape completes markup and returns
+the marks to the composer.
+
+Marks are represented as normalized vector-like coordinates in memory and
+drawn on the preview without immediately altering the source capture. On
+submission, Cairo paints the marks into an image buffer. The resulting image
+then follows the normal outbound JPEG preparation path.
+
+CHAT AND MULTI-TURN USE
+
+The answer appears in a regular, undecorated GTK application window rather
+than a layer-shell surface. Its initial size is 537 by 763 pixels, and it is
+intended to be managed and positioned by Hyprland. The application does not
+guarantee placement adjacent to the capture.
+
+The chat shows the initial capture, user prompts, and assistant responses.
+Responses stream into the UI as text arrives. Markdown is parsed and rendered
+as GTK widgets, including headings, paragraphs, lists, quotations, links, and
+code blocks. Code highlighting is a small in-app formatter rather than an
+external full syntax-highlighting framework. Assistant responses and code
+blocks have clipboard-copy controls. Clipboard text is written through
+arboard's Wayland data-control support.
+
+The input supports multiline text; Enter submits and Shift+Enter inserts a
+newline. The plus button starts another selection/capture. New captures are
+shown as pending attachments and can be individually removed before sending.
+The next user turn can contain multiple captured images. The UI displays an
+activity glow while network responses are in progress and scrolls the chat to
+the newest content.
+
+The conversation object retains Gemini request history in memory. The initial
+prompt and image, later user messages and any attached images, and completed
+model responses participate in subsequent API requests. History is discarded
+when the process exits.
+
+SETTINGS AND CREDENTIAL SETUP
+
+Launching with --settings opens the settings window. The chat window's gear
+button also opens settings. The settings UI supports:
+
+  - Multiple named Gemini API keys, a selected primary key, fallbacks, rename,
+    and removal.
+  - Font family and response font size (normalized to 10 to 40 points).
+  - Overlay opacity (normalized to 0.25 to 1.0).
+  - Optional chat background color.
+  - Optional external GTK CSS file.
+  - Optional spatial-context additions: hardware summary, active-window title,
+    and user-provided text.
+
+Spatial intelligence is disabled by default. When enabled, selected context
+is composed into each submitted prompt; it is not an implicit screen scanner.
+The hardware summary reads operating system and architecture constants plus
+available CPU and total-memory fields from /proc/cpuinfo and /proc/meminfo.
+The active-window title is obtained from the Hyprland state associated with
+the initial selection. User-entered context is attached when nonblank.
+
+If no usable API key is found on normal startup, a first-run GTK dialog guides
+the user to Google AI Studio and accepts a key. The app uses an external
+default-URI handler to open the site; it does not implement Google OAuth.
+Keys can also be added and managed later in Settings.
+
+
+3. RUNTIME ARCHITECTURE AND FLOW
+
+PROCESS STARTUP
+
+src/main.rs is the binary entry point. It initializes tracing, builds a
+multi-thread Tokio runtime, registers the GTK application ID
+com.magicpointerv2.tool, and loads the compiled-in CSS at GTK startup. On
+activation, settings are loaded and appearance preferences are applied. The
+--settings argument selects the settings-only path. A normal run resolves API
+credentials and either opens first-run setup or begins screen selection.
+
+The GTK application owns the UI and its event loop. GTK widgets and callbacks
+are constructed and manipulated on the GTK main thread. Asynchronous API
+requests execute on Tokio worker threads. A Tokio multi-producer/single-
+consumer channel transfers response text chunks to a GLib local future, which
+updates GTK widgets on the UI thread.
+
+SELECTION THROUGH FIRST REQUEST
+
+The main flow connects the following components:
+
+  main.rs
+    -> selection_overlay::show_selection_overlay
+    -> hypr_ipc state/window queries
+    -> screencapture::capture_screen_region
+    -> prompt_overlay::show_prompt_overlay
+    -> ui::build_floating_card
+    -> ai_agent::ConversationSession
+
+The selection overlay returns a Rect with desktop logical coordinates. The
+main callback captures it and creates a fresh ConversationSession. It queries
+Hyprland again to associate the selected rectangle with a window title/class
+where possible and to get the cursor position for prompt placement. If the
+query fails, it logs a warning and uses the selected rectangle as a placement
+fallback. The prompt callback creates the response window with the selected
+image, prompt text, conversation session, runtime handle, and settings
+references.
+
+The response window sends its initial prompt immediately after it is built.
+The UI constructs the user-facing message and a placeholder assistant bubble,
+starts the fetch indicator, creates a token channel, and spawns an async task.
+The task adds the user turn to the in-memory session, then streams the next
+Gemini response. Each received token is appended to the response and
+re-rendered as Markdown. Errors are written to the log and surfaced in the
+response stream.
+
+FOLLOW-UP FLOW
+
+Follow-up submission reads the text input, composes optional spatial context,
+clears the input, snapshots the pending image list, and adds a user bubble.
+The async task adds the text and any captured images as a user turn, then
+requests the next response using the existing conversation history. A new
+capture is staged in the UI until the next message is submitted. The initial
+capture is used as the image for the initial user turn. Subsequent text-only
+turns contain text only; attached capture turns contain text plus each image.
+
+
+4. GEMINI REQUEST IMPLEMENTATION
+
+src/ai_agent.rs owns image serialization, in-memory conversation state,
+networking, model selection, streaming parsing, and relevant unit tests.
+Captured images are downscaled, preserving aspect ratio, so their longest side
+is no more than 2048 pixels. They are encoded as JPEG at quality 82, then
+Base64 encoded and placed in Gemini inline_data parts with MIME type image/jpeg.
+
+The app posts JSON to the Gemini v1beta
+streamGenerateContent?alt=sse endpoint and sends the key in the
+x-goog-api-key header. The generation configuration currently sets temperature
+to 0.2 and maxOutputTokens to 2048. User and model turns are stored using
+Gemini's contents/role/parts shape. No API key is embedded in the request URL.
+
+The current built-in model attempt order is:
+
+  1. gemini-3.1-flash-lite
+  2. gemini-flash-lite-latest
+  3. gemini-3.5-flash-lite
+  4. gemini-2.5-flash-lite
+  5. gemini-flash-latest
+  6. gemini-3.8-flash
+  7. gemini-3.7-flash
+  8. gemini-3.6-flash
+  9. gemini-3.5-flash
+ 10. gemini-2.5-flash
+
+This list is compiled into the source; it is not currently configurable in the
+settings UI. A request has a 12-second connection timeout and a 20-second
+timeout waiting for a model response. Stream reads use a 20-second idle
+timeout. HTTP 404, 429, and 503 responses, connection/response timeouts,
+recognized overload stream errors, and empty model output may advance to the
+next model. Other API errors are returned.
+
+SSE parsing accepts LF and CRLF event boundaries, joins multiple data lines,
+handles [DONE], and extracts candidate text parts. An overloaded model may
+have yielded partial text before fallback; that partial text is kept in the
+visible/combined response. By contrast, the API-key fallback loop does not
+switch to a different key after any response text has started, avoiding
+combination of output from separate credentials. The primary key is tried
+before saved fallback keys. A nonempty GEMINI_API_KEY or GOOGLE_API_KEY
+environment value is placed before saved keys; GEMINI_API_KEY takes priority
+if both environment variables are set, and duplicates are removed.
+
+src/bin/list_models.rs is an auxiliary Tokio command-line binary. It calls the
+Gemini models endpoint using configured credentials and prints the response.
+It is a developer utility and not part of the GTK interaction flow.
+
+
+5. IMPLEMENTATION MAP
+
+Cargo.toml defines the magicpointerv2 package, the default executable, Rust
+edition 2024, and the Rust dependencies. Cargo.lock records the resolved
+dependency graph. build.rs adds GTK4 Layer Shell linker configuration,
+including link ordering needed for Wayland-related symbols.
+
+src/main.rs
+  Application startup, runtime construction, credential setup, settings mode,
+  and orchestration of selection, capture, prompt, and response window.
+
+src/lib.rs
+  Public module declarations and convenient re-exports used by the binary and
+  model-list utility.
+
+src/hypr_ipc.rs
+  Hyprland cursor, active-client, client-list, and monitor/workspace queries.
+  Produces typed geometry/title/class data for selection and context.
+
+src/selection_overlay/
+  geometry.rs defines Rect, the three selection modes, window conversion,
+  overlap cycling, edge-guide collection, and 10-pixel snap lookup.
+  mod.rs builds the exclusive-keyboard fullscreen overlay, wires pointer,
+  scroll, drag, and keyboard controllers, and handles mode/capture events.
+  render.rs draws mode hints, spotlight affordances, labels, and selection
+  details using Cairo.
+
+src/screencapture.rs
+  Validates rectangle dimensions and invokes libwayshot for a logical-region
+  screenshot returned as DynamicImage.
+
+src/prompt_overlay/
+  position.rs selects a monitor and computes cursor-adjacent, edge-clamped
+  prompt geometry. mod.rs builds the preview and composer, quick-action chips,
+  submit/dismiss behavior, and annotation controls. annotation.rs models,
+  renders, and rasterizes markup. annotation_modal.rs implements the canvas,
+  drawing gestures, tool selection, undo, clear, and finish actions.
+
+src/ai_agent.rs
+  JPEG/Base64 image preparation, ConversationSession history, Gemini request
+  construction, model/key fallback, timeouts, SSE parsing, and token delivery.
+
+src/auth.rs and src/auth_setup.rs
+  API key resolution and first-run setup. Credential persistence itself is
+  implemented in settings/mod.rs.
+
+src/settings/
+  mod.rs defines AppSettings and ApiKeyRecord, JSON persistence, keyring
+  operations, normalization, and primary/fallback ordering. appearance.rs
+  applies font, opacity, background, and user CSS. context.rs composes the
+  opt-in spatial context. ui.rs creates and wires the GTK settings window.
+
+src/ui/
+  mod.rs builds the regular GTK chat window, attachment staging, message
+  bubbles, asynchronous request dispatch, response copy controls, and
+  follow-up interactions. markdown.rs converts Markdown and code blocks into
+  GTK widgets. attachments.rs builds image previews. indicator.rs draws and
+  animates the response activity line.
+
+src/styles/
+  Modular GTK CSS for base surfaces, settings, prompt composer, annotation
+  modal, chat, and Markdown/code presentation. styles/mod.rs bundles the
+  stylesheets at compile time. The app does not load its built-in styles from
+  runtime files; an optional user-selected GTK CSS file is a separate setting.
+
+src/bin/list_models.rs
+  Developer utility for querying the available Gemini models endpoint.
+
+models.txt
+  A saved model-list response snapshot. It is not the active model
+  configuration and is not loaded by the application.
+
+
+6. TECHNOLOGIES AND FRAMEWORKS
+
+LANGUAGE AND BUILD
+
+  - Rust, edition 2024: application and utility implementation.
+  - Cargo: package, dependency, build, and test workflow.
+  - build.rs: native linker flags for GTK4 Layer Shell.
+
+DESKTOP UI AND DRAWING
+
+  - GTK4 through the gtk4 Rust crate: application lifecycle, windows, controls,
+    text views, image previews, and normal response window.
+  - GTK4 Layer Shell through gtk4-layer-shell: fullscreen selection and
+    cursor-adjacent prompt/markup surfaces on Wayland.
+  - GLib/GIO/GDK: event loop integration, main-thread futures, display and
+    monitor discovery, application IDs, and URI launching. These are exposed
+    through the GTK Rust bindings.
+  - Cairo: overlay drawing, selection shapes, markup rendering, and final
+    annotation rasterization.
+  - GTK CSS: bundled application styling and optional custom user styles.
+
+COMPOSITOR AND CAPTURE
+
+  - hyprland Rust crate and Hyprland IPC: cursor, active window, clients,
+    monitor, workspace, geometry, class, and title information.
+  - libwayshot: Wayland compositor screencopy into in-memory image buffers.
+  - image: DynamicImage manipulation, thumbnailing, pixel formats, and JPEG
+    encoding.
+
+NETWORKING AND SERIALIZATION
+
+  - Tokio: asynchronous runtime for Gemini operations.
+  - reqwest: HTTPS requests and streamed response bodies.
+  - futures-util: asynchronous stream polling.
+  - serde and serde_json: settings and Gemini request/response data.
+  - base64: inline image payload encoding.
+  - Gemini SSE handling: implemented in ai_agent.rs; there is no separate SSE
+    client crate in Cargo.toml.
+
+OTHER APPLICATION SERVICES
+
+  - pulldown-cmark: Markdown parsing before rendering in GTK widgets.
+  - arboard with wayland-data-control: system clipboard text staging.
+  - Secret Service via the secret-tool executable: API key retrieval, storage,
+    and removal. This is an intentional subprocess dependency; the complete
+    app is not a zero-subprocess application.
+  - tracing and tracing-subscriber: runtime logging.
+  - anyhow: contextual error propagation.
+
+
+7. PERSISTENCE, PRIVACY, AND EXTERNAL REQUIREMENTS
+
+Settings are stored at $XDG_CONFIG_HOME/magicpointerv2/settings.json, or
+~/.config/magicpointerv2/settings.json when XDG_CONFIG_HOME is unset. The file
+contains preferences and API-key metadata (IDs and display names), not API-key
+values. It is written with user-only permissions and replaced via a temporary
+file and rename. API key values are stored in the user's Secret Service
+keyring under the magicpointerv2 service label. This requires secret-tool and
+a working keyring provider. The application also supports the two API-key
+environment variables described above.
+
+During use, capture buffers, markup, and conversation history remain in
+process memory. To answer a request, the selected image or images and user
+prompt are transmitted to Google's Gemini API over HTTPS. If the user enables
+spatial intelligence, selected hardware data, a window title, or custom text
+can also be sent. The code path does not save screenshot files or chat
+transcripts to disk, but Google receives the submitted content and handles it
+under its own service and account terms.
+
+The runtime expects a Wayland session, Hyprland IPC access, GTK4, GTK4 Layer
+Shell, a compositor with the screencopy protocol required by libwayshot, a
+network connection, and a Gemini API key. Keyring-backed storage additionally
+needs Secret Service. Building requires a Rust toolchain supporting edition
+2024, Cargo, a C toolchain, pkg-config, and the native development packages
+needed by GTK4, GTK4 Layer Shell, and transitive dependencies.
+
+
+8. NON-GOALS AND CURRENT LIMITS
+
+  - No local AI model, OCR engine, or offline inference.
+  - No cross-compositor abstraction; Hyprland is queried directly.
+  - No X11 target.
+  - No background daemon, automatic screen capture, or desktop surveillance.
+  - No click, keyboard, clipboard-paste, or command execution against target
+    applications. Clipboard support is for copying assistant text/code.
+  - No persistent chat history or local screenshot archive.
+  - No user-facing model-selection setting; model order is source-defined.
+  - No guaranteed response-card placement beside the selected region.
+  - No installer/package definition is currently included in this repository.
+
+
+9. REPOSITORY CHECKS
+
+The project has unit tests for logic including selection geometry and
+window cycling, prompt placement, settings normalization and key ordering,
+spatial-context composition, image encoding/resizing, multiple-image request
+construction, and Gemini SSE parsing.
+
+Typical developer commands:
+
+  cargo fmt --all
+  cargo check --all-targets
+  cargo test --all-targets
+  cargo run --bin list_models
+
+The model-list command requires working credentials and network access. UI
+execution also requires a suitable graphical Wayland/Hyprland session.

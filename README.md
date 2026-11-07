@@ -10,6 +10,9 @@ This README describes the implementation that exists in this repository today.
 It is not a description of a planned daemon, general-purpose desktop agent, or
 compositor-independent product.
 
+For a deeper plain-text overview of the project's scope, implementation,
+technology, and runtime boundaries, see [description.txt](./description.txt).
+
 ## Contents
 
 - [Project vision and current scope](#project-vision-and-current-scope)
@@ -84,8 +87,8 @@ title, and user-entered context to requests.
   spacious 1280×720 overlay for precise drawing with Pen, Arrow, Box, Undo (Ctrl+Z),
   and Clear tools. Vector annotations are kept in memory without intermediate image
   re-encoding; the final image is only re-encoded once when the prompt is submitted.
-- **Quick-action chips**: One-click zero-typing pills below the entry (*Explain
-  this*, *Extract text / Code*, *Debug error*, *Summarize*, *Translate*) to
+- **Quick-action chips**: One-click zero-typing pills below the entry
+  (**Explain**, **Extract Code**, **Debug Error**, **Summarize**, **Translate**) to
   immediately dispatch common prompts.
 - Opens a floating, regular GTK Wayland chat window after the initial prompt is
   submitted.
@@ -109,9 +112,10 @@ title, and user-entered context to requests.
 - Streams response text to the GTK interface using server-sent events (SSE).
 - Re-encodes captured images as JPEG at quality 82 and scales them down so the
   longest dimension is at most 2048 pixels before sending.
-- Tries a configured primary API key first, followed by saved fallback keys.
-- Tries configured Gemini model endpoints in sequence when endpoints are
-  unavailable, overloaded, rate-limited, or fail to produce a response.
+- Tries a non-empty `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment key first,
+  then the saved primary key and remaining saved keys in order.
+- Tries a built-in sequence of Gemini model endpoints when a model is
+  unavailable, overloaded, rate-limited, times out, or returns no text.
 - Avoids switching API keys after response text has already started streaming,
   to avoid mixing partial answers from different keys.
 
@@ -141,8 +145,8 @@ application with `--settings`.
 4. **Capture in memory.** `libwayshot` captures the selected logical region and
    returns an image buffer.
 5. **Write a prompt.** The prompt composer displays the capture preview and
-   accepts a question. Enter inserts a line break; Ctrl+Enter or the send
-   button submits it.
+   accepts a question. Enter submits it; Shift+Enter inserts a line break. A
+   quick-action chip can submit a common request without typing.
 6. **Build the request.** The prompt and captured image are added to the current
    in-memory conversation. If spatial intelligence is enabled, selected
    context is appended to the request.
@@ -348,9 +352,20 @@ history. Prefer the setup dialog or Settings and the system keyring.
 ### Selection and prompt
 
 - Drag across the screen to select a region.
+- Press **Space** to cycle between Window Snap, Region Selection, and Full
+  Monitor modes. In Window Snap mode, hover to highlight a window and click to
+  capture it; use **Tab**, **Shift+Tab**, or the scroll wheel to cycle through
+  overlapping windows. Dragging selects a custom region in either window or
+  region mode.
 - Press **Escape** to cancel the selection.
 - Enter a question in the prompt composer that appears near the cursor.
-- Use **Enter** for a newline and **Ctrl+Enter** or the send button to submit.
+- Press **Enter** or the send button to submit; use **Shift+Enter** for a
+  newline. The **Explain**, **Extract Code**, **Debug Error**, **Summarize**,
+  and **Translate** chips submit their preset prompts immediately.
+- Click the capture thumbnail or **Annotate** to open the markup canvas. Use
+  **Pen**, **Arrow**, or **Box** to draw; **Ctrl+Z** removes the last
+  annotation, **Clear** removes all annotations, and **Done**, Enter, or
+  Escape closes the canvas.
 - The prompt composer is a GTK Layer Shell overlay. Its placement is
   cursor-adjacent when there is room, not guaranteed to match every compositor
   layout or remain adjacent after the chat opens.
@@ -362,7 +377,8 @@ history. Prefer the setup dialog or Settings and the system keyring.
 - Use the **+** button to capture another region. The selection overlay opens
   again; a successful capture appears as a pending preview above the composer.
 - Click the **×** on a pending preview to remove that image before sending.
-- Click the send button or press **Ctrl+Enter** to submit a follow-up.
+- Click the send button or press **Enter** to submit a follow-up; **Shift+Enter**
+  inserts a newline.
 - Click the copy button under an assistant response, or the copy button in a
   code block, to copy its contents.
 - Use the gear icon to open Settings.
@@ -611,6 +627,12 @@ runtime stylesheet parsing.
   type into other applications, or run model-proposed commands.
 - **No settings for model selection:** the current model fallback order is
   maintained in code rather than exposed in Settings.
+- **Fixed model fallback order:** requests try
+  `gemini-3.1-flash-lite`, `gemini-flash-lite-latest`,
+  `gemini-3.5-flash-lite`, `gemini-2.5-flash-lite`,
+  `gemini-flash-latest`, `gemini-3.8-flash`, `gemini-3.7-flash`,
+  `gemini-3.6-flash`, `gemini-3.5-flash`, and `gemini-2.5-flash` in that
+  order. Availability depends on Google's API and the configured key.
 - **Compositor controls regular chat-window placement:** the response window
   is a normal Wayland window. The compositor controls its floating placement;
   it is not guaranteed to open beside the selected region.
