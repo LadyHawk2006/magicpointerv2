@@ -3,8 +3,8 @@ use gtk4::prelude::*;
 
 pub const PROMPT_WIDTH: i32 = 440;
 pub const PROMPT_HEIGHT: i32 = 280;
-pub const CURSOR_GAP: i32 = 18;
-pub const EDGE_PADDING: i32 = 12;
+pub const CURSOR_GAP: i32 = 8;
+pub const EDGE_PADDING: i32 = 24;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PromptPosition {
@@ -81,8 +81,8 @@ mod tests {
         assert_eq!(
             position_prompt((400, 300), monitor, (380, 220)),
             PromptPosition {
-                left: 418,
-                top: 318
+                left: 408,
+                top: 308
             }
         );
     }
@@ -93,8 +93,8 @@ mod tests {
         assert_eq!(
             position_prompt((1900, 1060), monitor, (380, 220)),
             PromptPosition {
-                left: 1502,
-                top: 822
+                left: 1512,
+                top: 832
             }
         );
     }
@@ -105,8 +105,8 @@ mod tests {
         assert_eq!(
             position_prompt((-1800, 300), monitor, (380, 220)),
             PromptPosition {
-                left: 138,
-                top: 318
+                left: 128,
+                top: 308
             }
         );
     }

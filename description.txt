@@ -83,9 +83,9 @@ write screenshot files.
 After capture, a second GTK Layer Shell surface displays a small image preview,
 capture dimensions, a multiline text input, and send controls. Its nominal size
 is 440 by 280 logical pixels, reduced when necessary to fit the chosen monitor.
-Placement is calculated beside the cursor with an 18-pixel gap, flipped to the
+Placement is calculated beside the cursor with an 8-pixel gap, flipped to the
 opposite side when the available space is insufficient, and clamped with
-12-pixel edge padding. If Hyprland cursor data is unavailable, the caller uses
+24-pixel edge padding. If Hyprland cursor data is unavailable, the caller uses
 the selected rectangle's lower-right corner as a placement hint. The app also
 falls back to the first display monitor if it cannot find one containing that
 hint.
