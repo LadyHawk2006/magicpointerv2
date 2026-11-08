@@ -3,13 +3,13 @@ pub mod annotation_modal;
 pub mod position;
 
 pub use annotation::{
-    apply_annotations_to_image, draw_annotations_on_context, large_image_texture, Annotation,
-    AnnotationTool,
+    Annotation, AnnotationTool, apply_annotations_to_image, draw_annotations_on_context,
+    large_image_texture,
 };
 pub use annotation_modal::show_annotation_modal;
 pub use position::{
-    find_monitor, position_prompt, PromptPosition, CURSOR_GAP, EDGE_PADDING, PROMPT_HEIGHT,
-    PROMPT_WIDTH,
+    CURSOR_GAP, EDGE_PADDING, PROMPT_HEIGHT, PROMPT_WIDTH, PromptPosition, find_monitor,
+    position_prompt,
 };
 
 use gtk4::gdk;
@@ -238,11 +238,26 @@ pub fn show_prompt_overlay<F, D>(
     chip_bar.add_css_class("prompt-chips-bar");
 
     let chips = [
-        ("Explain", "Explain what is shown in this capture in detail."),
-        ("Extract Code", "Extract all visible code from this capture verbatim with appropriate syntax highlighting."),
-        ("Debug Error", "Diagnose this error or bug, explain why it occurred, and provide the fix."),
-        ("Summarize", "Summarize the key information and points visible here."),
-        ("Translate", "Translate the visible text into English and explain key terms."),
+        (
+            "Explain",
+            "Explain what is shown in this capture in detail.",
+        ),
+        (
+            "Extract Code",
+            "Extract all visible code from this capture verbatim with appropriate syntax highlighting.",
+        ),
+        (
+            "Debug Error",
+            "Diagnose this error or bug, explain why it occurred, and provide the fix.",
+        ),
+        (
+            "Summarize",
+            "Summarize the key information and points visible here.",
+        ),
+        (
+            "Translate",
+            "Translate the visible text into English and explain key terms.",
+        ),
     ];
 
     let image_holder = Rc::new(RefCell::new(Some(image)));

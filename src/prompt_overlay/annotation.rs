@@ -51,7 +51,13 @@ pub fn apply_annotations_to_image(
             Annotation::Pen(points) => {
                 if points.len() < 2 {
                     if let Some(p) = points.first() {
-                        cr.arc(p.0 * scale_x, p.1 * scale_y, 4.0, 0.0, std::f64::consts::TAU);
+                        cr.arc(
+                            p.0 * scale_x,
+                            p.1 * scale_y,
+                            4.0,
+                            0.0,
+                            std::f64::consts::TAU,
+                        );
                         let _ = cr.fill();
                     }
                     continue;

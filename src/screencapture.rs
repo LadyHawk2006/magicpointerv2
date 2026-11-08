@@ -22,6 +22,7 @@ pub fn capture_screen_region(x: i32, y: i32, width: u32, height: u32) -> Result<
         },
     };
 
-    let image = wayshot.screenshot_freeze(move |_| Ok(region), false)?;
+    #[allow(deprecated)]
+    let image = wayshot.screenshot(region, false)?;
     Ok(image)
 }

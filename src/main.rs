@@ -59,9 +59,8 @@ fn start_selection(
                     let (cursor, active_window_title, context_label) =
                         match hypr_ipc::get_hyprland_state() {
                             Ok(state) => {
-                                let matching_window = hypr_ipc::get_visible_windows()
-                                    .ok()
-                                    .and_then(|windows| {
+                                let matching_window =
+                                    hypr_ipc::get_visible_windows().ok().and_then(|windows| {
                                         windows.into_iter().find(|w| {
                                             w.x == rect.x
                                                 && w.y == rect.y
@@ -83,9 +82,9 @@ fn start_selection(
                                             .active_window
                                             .as_ref()
                                             .map(|window| window.title.clone()),
-                                        state
-                                            .active_window
-                                            .map(|window| format!("{} ({})", window.class, window.title)),
+                                        state.active_window.map(|window| {
+                                            format!("{} ({})", window.class, window.title)
+                                        }),
                                     )
                                 }
                             }

@@ -1,5 +1,5 @@
 use super::annotation::{
-    draw_annotations_on_context, large_image_texture, Annotation, AnnotationTool,
+    Annotation, AnnotationTool, draw_annotations_on_context, large_image_texture,
 };
 use gtk4::gdk;
 use gtk4::glib;
@@ -118,13 +118,7 @@ pub fn show_annotation_modal<F>(
     da.set_draw_func(move |_, cr, width, height| {
         let annots = state_annots.borrow();
         let active = state_active.borrow();
-        draw_annotations_on_context(
-            cr,
-            &annots,
-            active.as_ref(),
-            width as f64,
-            height as f64,
-        );
+        draw_annotations_on_context(cr, &annots, active.as_ref(), width as f64, height as f64);
     });
 
     let tool_pen = current_tool.clone();

@@ -2,8 +2,8 @@ pub mod geometry;
 pub mod render;
 
 pub use geometry::{
-    collect_guides, convert_windows_to_local, cycle_window_index, find_all_snapped_windows,
-    find_nearest_guide, find_snapped_window, Rect, SelectionMode, SnappedWindow, SNAP_DISTANCE,
+    Rect, SNAP_DISTANCE, SelectionMode, SnappedWindow, collect_guides, convert_windows_to_local,
+    cycle_window_index, find_all_snapped_windows, find_nearest_guide, find_snapped_window,
 };
 
 use crate::hypr_ipc;
@@ -328,8 +328,7 @@ where
                     let mut cur_x = start_x + offset_x;
                     let mut cur_y = start_y + offset_y;
 
-                    if let Some(snap_x) =
-                        find_nearest_guide(&x_guides_update, cur_x, SNAP_DISTANCE)
+                    if let Some(snap_x) = find_nearest_guide(&x_guides_update, cur_x, SNAP_DISTANCE)
                     {
                         cur_x = snap_x;
                         st.magnetic_snap_x = Some(snap_x);
@@ -337,8 +336,7 @@ where
                         st.magnetic_snap_x = None;
                     }
 
-                    if let Some(snap_y) =
-                        find_nearest_guide(&y_guides_update, cur_y, SNAP_DISTANCE)
+                    if let Some(snap_y) = find_nearest_guide(&y_guides_update, cur_y, SNAP_DISTANCE)
                     {
                         cur_y = snap_y;
                         st.magnetic_snap_y = Some(snap_y);
@@ -362,6 +360,7 @@ where
 
     let state_end = state.clone();
     let win_weak = window.downgrade();
+    let app_end = app.clone();
     let on_selected = Rc::new(on_selected);
     let on_dismiss_rc = Rc::new(on_dismiss);
     let on_dismiss_drag = on_dismiss_rc.clone();
@@ -380,9 +379,6 @@ where
         let (mode, drag_status) = current_state;
 
         if mode == SelectionMode::FullMonitor {
-            if let Some(win) = win_weak.upgrade() {
-                win.close();
-            }
             let full_rect = Rect {
                 x: monitor_origin.0,
                 y: monitor_origin.1,
@@ -390,12 +386,8 @@ where
                 height: monitor_size.1.max(1) as u32,
             };
             info!("Full monitor captured: {:?}", full_rect);
-            on_selected(full_rect);
+            dismiss_and_capture(&app_end, win_weak.upgrade(), full_rect, &on_selected);
             return;
-        }
-
-        if let Some(win) = win_weak.upgrade() {
-            win.close();
         }
 
         match drag_status {
@@ -418,8 +410,11 @@ where
                         height: rh.round() as u32,
                     };
                     info!("Custom selection completed: {:?}", rect);
-                    on_selected(rect);
+                    dismiss_and_capture(&app_end, win_weak.upgrade(), rect, &on_selected);
                 } else {
+                    if let Some(win) = win_weak.upgrade() {
+                        win.close();
+                    }
                     on_dismiss_drag();
                 }
             }
@@ -430,26 +425,39 @@ where
                         st.hovered_window.clone()
                     };
 
-                    let target = hovered.or_else(|| {
-                        find_snapped_window(&windows_end, start_x, start_y).cloned()
-                    });
+                    let target = hovered
+                        .or_else(|| find_snapped_window(&windows_end, start_x, start_y).cloned());
 
                     if let Some(snapped) = target {
                         info!(
                             "Window smart-snapped and captured: {:?} (class: {}, title: {})",
                             snapped.compositor_rect, snapped.class, snapped.title
                         );
-                        on_selected(snapped.compositor_rect);
+                        dismiss_and_capture(
+                            &app_end,
+                            win_weak.upgrade(),
+                            snapped.compositor_rect,
+                            &on_selected,
+                        );
                     } else {
                         info!("Clicked empty screen area; dismissing selection");
+                        if let Some(win) = win_weak.upgrade() {
+                            win.close();
+                        }
                         on_dismiss_drag();
                     }
                 } else {
                     info!("Clicked without drag in region mode; dismissing");
+                    if let Some(win) = win_weak.upgrade() {
+                        win.close();
+                    }
                     on_dismiss_drag();
                 }
             }
             DragStatus::Idle => {
+                if let Some(win) = win_weak.upgrade() {
+                    win.close();
+                }
                 on_dismiss_drag();
             }
         }
@@ -512,4 +520,32 @@ where
 
     window.set_child(Some(&drawing_area));
     window.present();
+}
+
+fn dismiss_and_capture<F>(
+    app: &gtk4::Application,
+    window: Option<gtk4::ApplicationWindow>,
+    rect: Rect,
+    on_selected: &Rc<F>,
+) where
+    F: Fn(Rect) + 'static,
+{
+    // Prevent GTK application from exiting when the selection window closes
+    // before the prompt overlay window is created.
+    let hold_guard = app.hold();
+
+    if let Some(win) = window {
+        win.set_opacity(0.0);
+        win.set_visible(false);
+        win.close();
+    }
+    if let Some(display) = gdk::Display::default() {
+        display.sync();
+    }
+
+    let on_selected = on_selected.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(75), move || {
+        let _guard = hold_guard;
+        on_selected(rect);
+    });
 }
