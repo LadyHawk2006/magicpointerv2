@@ -1,7 +1,7 @@
 # Maintainer: Lex
 
 pkgname=magicpointerv2
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc='Ask Gemini questions about selected screen regions on Hyprland'
 arch=('x86_64')
@@ -23,7 +23,7 @@ optdepends=(
   'keepassxc: alternative Secret Service provider'
 )
 
-_release_tag='v.1.0.0'
+_release_tag='v.1.0.1'
 _release_url="https://github.com/LadyHawk2006/magicpointerv2/releases/download/${_release_tag}/magicpointerv2"
 _raw_url="https://raw.githubusercontent.com/LadyHawk2006/magicpointerv2/${_release_tag}"
 
@@ -36,11 +36,11 @@ source=(
   "magicpointerv2-LICENSE::${_raw_url}/LICENSE"
 )
 sha256sums=(
-  '69377481a3b0e63d6a3911fb891584a9cfb7054f3789cdbe1b3e199e20bbcbf3'
-  '6eabad3b80d79f42620623ba8229861fcc01462d87596a17cb503b518a3d8c5e'
+  '31c1a78943e69365e203bab349f5f1aff1d64c8793ad80eaa6cd289aea118ad0'
+  '011f2b95bec5de7dd5f73d41258d00f754b1199a50daaa1d2f72ec21ed6a2046'
   '8339725c00e9017dcdee2816f5573daa06b529749e6f01d0e57092c062005f90'
-  'e3356e5a9a191ecf9f5178f5acd81806df5557ef42b960660d90ffb6f591899e'
-  '540c255d61ea31bb0d81655fb6f616d1b19ef0730555ac0b1c5553096e13d2b2'
+  '97dd66613b8358fbb61231aaec70104808700c9433023a1f126134d4f0b06e95'
+  '025cea294782fee0a89f1264bf3f22a63086cc89816a6f0aedd4942910ef39a2'
   'fd35a6c038d31ba19d5d31188392e5a633ea6324cce66d55e06d835518a3ef8f'
 )
 
