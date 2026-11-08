@@ -51,6 +51,7 @@ pub struct SnappedWindow {
     pub local_rect: Rect,
     pub title: String,
     pub class: String,
+    pub address: String,
 }
 
 pub fn convert_windows_to_local(
@@ -104,6 +105,7 @@ pub fn convert_windows_to_local(
                 },
                 title: w.title.clone(),
                 class: w.class.clone(),
+                address: w.address.clone(),
             })
         })
         .collect()
@@ -213,6 +215,7 @@ mod tests {
                 height: 600,
                 title: "Editor".to_string(),
                 class: "code".to_string(),
+                address: "0x1".to_string(),
             },
             WindowGeometry {
                 x: -50,
@@ -221,6 +224,7 @@ mod tests {
                 height: 300,
                 title: "Terminal".to_string(),
                 class: "alacritty".to_string(),
+                address: "0x2".to_string(),
             },
             WindowGeometry {
                 x: 2500,
@@ -229,6 +233,7 @@ mod tests {
                 height: 400,
                 title: "Offscreen".to_string(),
                 class: "other".to_string(),
+                address: "0x3".to_string(),
             },
         ];
 
@@ -257,6 +262,7 @@ mod tests {
             height: 700,
             title: "Browser".to_string(),
             class: "firefox".to_string(),
+            address: "0x4".to_string(),
         }];
 
         let monitor_origin = (1920, 0);
@@ -316,6 +322,7 @@ mod tests {
                 },
                 title: "Top Window".to_string(),
                 class: "floating".to_string(),
+                address: "0xa".to_string(),
             },
             SnappedWindow {
                 compositor_rect: Rect {
@@ -332,6 +339,7 @@ mod tests {
                 },
                 title: "Bottom Window".to_string(),
                 class: "tiled".to_string(),
+                address: "0xb".to_string(),
             },
         ];
 

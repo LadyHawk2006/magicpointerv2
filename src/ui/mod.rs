@@ -12,7 +12,7 @@ use tracing::error;
 use crate::ai_agent::ConversationSession;
 use crate::executor;
 use crate::screencapture;
-use crate::selection_overlay::{self, Rect};
+use crate::selection_overlay;
 use crate::settings::{self, AppSettings};
 use crate::settings_ui;
 
@@ -262,12 +262,8 @@ pub fn build_floating_card(
         let attachment_row = capture_attachment_row.clone();
         selection_overlay::show_selection_overlay(
             &capture_app,
-            move |rect: Rect| match screencapture::capture_screen_region(
-                rect.x,
-                rect.y,
-                rect.width,
-                rect.height,
-            ) {
+            move |target: screencapture::CaptureTarget| match screencapture::capture_target(&target)
+            {
                 Ok(image) => {
                     let mut images = pending_images.borrow_mut();
                     images.push(image);

@@ -8,6 +8,7 @@ pub use geometry::{
 
 use crate::hypr_ipc;
 use crate::prompt_overlay;
+use crate::screencapture::CaptureTarget;
 use gtk4::cairo;
 use gtk4::gdk;
 use gtk4::glib;
@@ -44,7 +45,7 @@ struct OverlayState {
 
 pub fn show_selection_overlay<F, D>(app: &gtk4::Application, on_selected: F, on_dismiss: D)
 where
-    F: Fn(Rect) + 'static,
+    F: Fn(CaptureTarget) + 'static,
     D: Fn() + 'static,
 {
     let window = gtk4::ApplicationWindow::new(app);
@@ -386,7 +387,12 @@ where
                 height: monitor_size.1.max(1) as u32,
             };
             info!("Full monitor captured: {:?}", full_rect);
-            dismiss_and_capture(&app_end, win_weak.upgrade(), full_rect, &on_selected);
+            dismiss_and_capture(
+                &app_end,
+                win_weak.upgrade(),
+                CaptureTarget::Region(full_rect),
+                &on_selected,
+            );
             return;
         }
 
@@ -410,7 +416,12 @@ where
                         height: rh.round() as u32,
                     };
                     info!("Custom selection completed: {:?}", rect);
-                    dismiss_and_capture(&app_end, win_weak.upgrade(), rect, &on_selected);
+                    dismiss_and_capture(
+                        &app_end,
+                        win_weak.upgrade(),
+                        CaptureTarget::Region(rect),
+                        &on_selected,
+                    );
                 } else {
                     if let Some(win) = win_weak.upgrade() {
                         win.close();
@@ -430,13 +441,18 @@ where
 
                     if let Some(snapped) = target {
                         info!(
-                            "Window smart-snapped and captured: {:?} (class: {}, title: {})",
-                            snapped.compositor_rect, snapped.class, snapped.title
+                            "Window smart-snapped and captured: {:?} (class: {}, title: {}, address: {})",
+                            snapped.compositor_rect, snapped.class, snapped.title, snapped.address
                         );
                         dismiss_and_capture(
                             &app_end,
                             win_weak.upgrade(),
-                            snapped.compositor_rect,
+                            CaptureTarget::Window {
+                                rect: snapped.compositor_rect,
+                                title: snapped.title,
+                                class: snapped.class,
+                                address: snapped.address,
+                            },
                             &on_selected,
                         );
                     } else {
@@ -525,10 +541,10 @@ where
 fn dismiss_and_capture<F>(
     app: &gtk4::Application,
     window: Option<gtk4::ApplicationWindow>,
-    rect: Rect,
+    target: CaptureTarget,
     on_selected: &Rc<F>,
 ) where
-    F: Fn(Rect) + 'static,
+    F: Fn(CaptureTarget) + 'static,
 {
     // Prevent GTK application from exiting when the selection window closes
     // before the prompt overlay window is created.
@@ -546,6 +562,6 @@ fn dismiss_and_capture<F>(
     let on_selected = on_selected.clone();
     glib::timeout_add_local_once(std::time::Duration::from_millis(75), move || {
         let _guard = hold_guard;
-        on_selected(rect);
+        on_selected(target);
     });
 }

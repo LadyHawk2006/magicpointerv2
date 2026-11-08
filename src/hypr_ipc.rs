@@ -16,6 +16,7 @@ pub struct WindowGeometry {
     pub height: i32,
     pub title: String,
     pub class: String,
+    pub address: String,
 }
 
 pub fn get_hyprland_state() -> Result<HyprState> {
@@ -29,6 +30,7 @@ pub fn get_hyprland_state() -> Result<HyprState> {
         height: c.size.1 as i32,
         title: c.title,
         class: c.class,
+        address: c.address.to_string(),
     });
 
     Ok(HyprState {
@@ -89,6 +91,7 @@ pub fn get_visible_windows() -> Result<Vec<WindowGeometry>> {
             height: c.size.1 as i32,
             title: c.title,
             class: c.class,
+            address: c.address.to_string(),
         })
         .collect())
 }
