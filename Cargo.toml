@@ -1,6 +1,6 @@
 [package]
 name = "magicpointerv2"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 default-run = "magicpointerv2"
 description = "A Hyprland desktop assistant for asking Gemini about selected screen regions"
