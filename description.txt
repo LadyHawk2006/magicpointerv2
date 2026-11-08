@@ -61,24 +61,34 @@ when the user presses Space:
   - Full Monitor: the monitor is highlighted and a click captures the monitor.
 
 If windows overlap under the pointer, Tab and Shift+Tab cycle through them;
-the vertical scroll wheel also cycles the candidates. Custom region selection
+the vertical scroll wheel also cycles the candidates. When an occluded window is
+selected by cycling or snapping, the application captures only that specific
+window's rendered pixels using Wayland toplevel image capture protocols
+(ext_foreign_toplevel_image_capture_source_manager_v1 via libwayshot),
+completely bypassing any overlapping windows on top. Custom region selection
 has magnetic alignment to window and monitor edges within 10 logical pixels,
 with guide lines showing active snaps. The overlay displays the active mode,
 selection dimensions, or selected-window information. Escape cancels the
 selection.
 
 Window candidates come from mapped Hyprland clients on active workspaces (and
-pinned windows); the app filters its own surfaces. Window bounds are converted
-to the current monitor's local coordinate space and clipped to that monitor.
-If compositor state is unavailable, the selection overlay can still open, but
-window targeting and cursor-based placement may be limited.
+pinned windows); the app filters its own surfaces and retains window address,
+title, and class metadata. Window bounds are converted to the current monitor's
+local coordinate space and clipped to that monitor. If compositor state is
+unavailable, the selection overlay can still open, but window targeting and
+cursor-based placement may be limited.
 
 CAPTURE AND PROMPT COMPOSER
 
-The selected logical rectangle is passed to libwayshot, which returns an
-image::DynamicImage buffer in process memory. The application rejects
-zero-width or zero-height capture requests. The ordinary capture flow does not
-write screenshot files.
+Selection completion unmaps and hides the overlay surface, synchronizes the
+display, and uses an application hold guard during the transition to ensure
+overlay decorations never appear in captured pixels and GTK does not exit
+prematurely. The selection callback passes a CaptureTarget (Region or Window) to
+src/screencapture.rs. For isolated windows, it queries compositor toplevel
+handles using address, class, and title heuristics; if toplevel protocols are
+unsupported or fail, it falls back to capturing the logical screen rectangle.
+Zero-width or zero-height capture requests are rejected. The ordinary capture
+flow does not write screenshot files.
 
 After capture, a second GTK Layer Shell surface displays a small image preview,
 capture dimensions, a multiline text input, and send controls. Its nominal size
@@ -232,19 +242,21 @@ The main flow connects the following components:
   main.rs
     -> selection_overlay::show_selection_overlay
     -> hypr_ipc state/window queries
-    -> screencapture::capture_screen_region
+    -> screencapture::capture_target
     -> prompt_overlay::show_prompt_overlay
     -> ui::build_floating_card
     -> ai_agent::ConversationSession
 
-The selection overlay returns a Rect with desktop logical coordinates. The
-main callback captures it and creates a fresh ConversationSession. It queries
-Hyprland again to associate the selected rectangle with a window title/class
-where possible and to get the cursor position for prompt placement. If the
-query fails, it logs a warning and uses the selected rectangle as a placement
-fallback. The prompt callback creates the response window with the selected
-image, prompt text, conversation session, runtime handle, and settings
-references.
+The selection overlay yields a CaptureTarget (Region or Window) containing
+bounding coordinates and any selected window metadata (address, title, and
+class). The main callback captures it via screencapture::capture_target and
+creates a fresh ConversationSession. For window targets, active window title and
+context labels are taken directly from the selected window; for regions,
+Hyprland IPC is queried to associate intersecting window metadata and cursor
+position for prompt placement. If the query fails, it logs a warning and uses
+the selected rectangle as a placement fallback. The prompt callback creates the
+response window with the selected image, prompt text, conversation session,
+runtime handle, and settings references.
 
 The response window sends its initial prompt immediately after it is built.
 The UI constructs the user-facing message and a placeholder assistant bubble,
@@ -341,19 +353,21 @@ src/lib.rs
 
 src/hypr_ipc.rs
   Hyprland cursor, active-client, client-list, and monitor/workspace queries.
-  Produces typed geometry/title/class data for selection and context.
+  Produces typed geometry/title/class/address data for selection and context.
 
 src/selection_overlay/
-  geometry.rs defines Rect, the three selection modes, window conversion,
-  overlap cycling, edge-guide collection, and 10-pixel snap lookup.
+  geometry.rs defines Rect, SnappedWindow, the three selection modes, window
+  conversion, overlap cycling, edge-guide collection, and 10-pixel snap lookup.
   mod.rs builds the exclusive-keyboard fullscreen overlay, wires pointer,
   scroll, drag, and keyboard controllers, and handles mode/capture events.
   render.rs draws mode hints, spotlight affordances, labels, and selection
   details using Cairo.
 
 src/screencapture.rs
-  Validates rectangle dimensions and invokes libwayshot for a logical-region
-  screenshot returned as DynamicImage.
+  Defines CaptureTarget (Region and Window). Captures isolated toplevel windows
+  directly through libwayshot and Wayland toplevel protocols with heuristic
+  scoring, falling back to logical screen-region capture. Validates dimensions
+  and returns an in-memory DynamicImage.
 
 src/prompt_overlay/
   position.rs selects a monitor and computes cursor-adjacent, edge-clamped
@@ -508,7 +522,9 @@ needed by GTK4, GTK4 Layer Shell, and transitive dependencies.
     automatically refreshed, and catalog entries may not support multimodal
     streaming or be available to every API key.
   - No guaranteed response-card placement beside the selected region.
-  - No installer/package definition is currently included in this repository.
+  - Limited distribution packaging: an Arch Linux PKGBUILD is provided for
+    the prebuilt x86_64 release; dedicated packages for other distributions are
+    not yet provided.
 
 
 9. REPOSITORY CHECKS

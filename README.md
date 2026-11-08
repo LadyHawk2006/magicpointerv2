@@ -82,8 +82,15 @@ title, and user-entered context to requests.
   - *Region Selection*: Pure freeform rectangular drag selection.
   - *Full Monitor*: Spotlights the whole monitor; one click captures everything.
 - **Tab / Scroll window cycling**: When windows overlap under the cursor, press
-  **Tab** (or **Shift+Tab**) or scroll the mouse wheel to cycle down through the
-  stacked window layers.
+  **Tab** (or **Shift+Tab**) or scroll the mouse wheel to cycle through the
+  stacked window layers. Selecting an occluded window captures **only that
+  specific window's rendered pixels** via Wayland's
+  `ext_foreign_toplevel_image_capture_source_manager_v1` protocol, completely
+  bypassing overlying windows.
+- **Artifact-free capture**: Selection overlay dismissal cleanly unmaps and
+  synchronizes the display surface with an application hold guard before capturing,
+  preventing overlay borders from bleeding into screenshots or causing unintended
+  process exits.
 - **Edge snapping magnetism**: While dragging a custom region, selection edges
   subtly snap to nearby window and screen borders within 10 pixels with visual
   alignment guidelines.
@@ -92,7 +99,7 @@ title, and user-entered context to requests.
 - Drag to select a custom rectangular region; the selected area is highlighted
   with realtime dimensions.
 - Press **Escape** to cancel selection.
-- Captures the selected region through `libwayshot`, without writing the
+- Captures the selected window or region through `libwayshot`, without writing the
   screenshot to a file as part of the capture flow.
 - Queries Hyprland for cursor location and active-window details.
 - Places the prompt composer near the cursor when possible, clamping it to the
@@ -177,10 +184,10 @@ opened chat windows.
    Tokio runtime.
 2. **Check credentials.** If there is no usable API key, the first-run setup
    guides the user to Google AI Studio and prompts for a Gemini API key.
-3. **Select a region.** The app displays its fullscreen selection surface. A
-   drag defines the screen rectangle; Escape cancels.
-4. **Capture in memory.** `libwayshot` captures the selected logical region and
-   returns an image buffer.
+3. **Select a region or window.** The app displays its fullscreen selection surface.
+   A window snap, Tab/scroll cycle, or custom drag defines the capture target; Escape cancels.
+4. **Capture in memory.** `libwayshot` captures the target into an in-memory image buffer,
+   utilizing direct toplevel capture for isolated windows or logical screen-region capture.
 5. **Write a prompt.** The prompt composer displays the capture preview and
    accepts a question. Enter submits it; Shift+Enter inserts a line break. A
    quick-action chip can submit a common request without typing.
@@ -707,8 +714,8 @@ magicpointerv2/
 | `src/settings/` | Persistent settings: model, file I/O, Secret Service keyring, appearance providers, spatial-context prompt composition, Hyprland rule management, and GTK settings window. |
 | `src/styles/` | Modular GTK CSS files bundled at compile time into a single `APP_CSS` constant with no runtime disk reads. |
 | `src/ui/` | Floating chat window, Markdown renderer, attachment previews, fetch-glow indicator, composer, and chat actions. |
-| `src/screencapture.rs` | Captures a selected logical screen region as an in-memory `DynamicImage` through `libwayshot`. |
-| `src/hypr_ipc.rs` | Reads cursor position and active-window geometry/title/class from Hyprland. |
+| `src/screencapture.rs` | Defines `CaptureTarget` (`Region` and `Window`); performs isolated toplevel window capture via Wayland protocols with heuristic score matching, falling back to logical screen-region capture. |
+| `src/hypr_ipc.rs` | Reads cursor position and window geometry, title, class (`app_id`), and address from Hyprland. |
 | `src/ai_agent.rs` | In-memory conversation history, image encoding, Gemini HTTP requests, model/key fallback, and SSE parsing/streaming. |
 | `src/auth.rs` | Resolves environment and saved API keys and exposes key-saving behavior for setup. |
 | `src/auth_setup.rs` | First-run Google AI Studio guidance and API-key entry UI. |
