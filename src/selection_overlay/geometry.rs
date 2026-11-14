@@ -5,6 +5,7 @@ pub const SNAP_DISTANCE: f64 = 10.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SelectionMode {
     WindowSnap,
+    Montage,
     RegionSelection,
     FullMonitor,
 }
@@ -12,7 +13,8 @@ pub enum SelectionMode {
 impl SelectionMode {
     pub fn next(self) -> Self {
         match self {
-            Self::WindowSnap => Self::RegionSelection,
+            Self::WindowSnap => Self::Montage,
+            Self::Montage => Self::RegionSelection,
             Self::RegionSelection => Self::FullMonitor,
             Self::FullMonitor => Self::WindowSnap,
         }
@@ -21,6 +23,7 @@ impl SelectionMode {
     pub fn title(self) -> &'static str {
         match self {
             Self::WindowSnap => "Window Snap",
+            Self::Montage => "Multi-Window Montage",
             Self::RegionSelection => "Region Selection",
             Self::FullMonitor => "Full Monitor",
         }
@@ -279,9 +282,10 @@ mod tests {
     #[test]
     fn mode_switcher_cycles_correctly() {
         let mode = SelectionMode::WindowSnap;
-        assert_eq!(mode.next(), SelectionMode::RegionSelection);
-        assert_eq!(mode.next().next(), SelectionMode::FullMonitor);
-        assert_eq!(mode.next().next().next(), SelectionMode::WindowSnap);
+        assert_eq!(mode.next(), SelectionMode::Montage);
+        assert_eq!(mode.next().next(), SelectionMode::RegionSelection);
+        assert_eq!(mode.next().next().next(), SelectionMode::FullMonitor);
+        assert_eq!(mode.next().next().next().next(), SelectionMode::WindowSnap);
     }
 
     #[test]

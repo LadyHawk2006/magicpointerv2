@@ -42,6 +42,7 @@ pub struct SpatialSettings {
     pub enabled: bool,
     pub attach_hardware_info: bool,
     pub attach_active_window_title: bool,
+    pub attach_workspace_windows: bool,
     pub custom_text: String,
 }
 
@@ -102,6 +103,8 @@ pub struct AppSettings {
     pub overlay_opacity: f64,
     pub background_color: String,
     pub custom_css_path: String,
+    pub system_instruction: String,
+    pub custom_chips: Vec<(String, String)>,
     pub spatial: SpatialSettings,
     pub hyprland_window: HyprlandWindowSettings,
 }
@@ -125,6 +128,8 @@ impl Default for AppSettings {
             overlay_opacity: 0.96,
             background_color: String::new(),
             custom_css_path: String::new(),
+            system_instruction: String::new(),
+            custom_chips: Vec::new(),
             spatial: SpatialSettings::default(),
             hyprland_window: HyprlandWindowSettings::default(),
         }
@@ -340,19 +345,22 @@ impl AppSettings {
         {
             self.primary_api_key_id = self.api_keys.first().map(|key| key.id.clone());
         }
+
+        self.custom_chips
+            .retain(|(label, prompt)| !label.trim().is_empty() && !prompt.trim().is_empty());
     }
 }
 
-pub fn available_models() -> Result<Vec<(String, String)>> {
-    let json_start = MODEL_CATALOG
+pub fn parse_model_catalog(json_str: &str) -> Result<Vec<(String, String)>> {
+    let json_start = json_str
         .find('{')
-        .ok_or_else(|| anyhow!("models.txt does not contain a JSON model list"))?;
-    let catalog: serde_json::Value = serde_json::from_str(&MODEL_CATALOG[json_start..])
-        .context("Could not parse the model catalog in models.txt")?;
+        .ok_or_else(|| anyhow!("Model list does not contain JSON"))?;
+    let catalog: serde_json::Value = serde_json::from_str(&json_str[json_start..])
+        .context("Could not parse the model catalog JSON")?;
     let models = catalog
         .get("models")
         .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| anyhow!("models.txt has no models array"))?;
+        .ok_or_else(|| anyhow!("Model catalog has no models array"))?;
 
     let mut available = Vec::new();
     let mut seen = HashSet::new();
@@ -389,10 +397,50 @@ pub fn available_models() -> Result<Vec<(String, String)>> {
 
     if available.is_empty() {
         return Err(anyhow!(
-            "models.txt contains no models supporting generateContent"
+            "Catalog contains no models supporting generateContent"
         ));
     }
     Ok(available)
+}
+
+pub fn available_models() -> Result<Vec<(String, String)>> {
+    parse_model_catalog(MODEL_CATALOG)
+}
+
+pub async fn fetch_live_models() -> Result<Vec<(String, String)>> {
+    let api_keys = crate::auth::get_api_keys()?;
+    if api_keys.is_empty() {
+        return Err(anyhow!("No Gemini API key is configured."));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let mut last_error = None;
+
+    for (name, api_key) in api_keys {
+        let response = match client
+            .get("https://generativelanguage.googleapis.com/v1beta/models")
+            .header("x-goog-api-key", &api_key)
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(err) => {
+                last_error = Some(anyhow!("Network error with key '{name}': {err}"));
+                continue;
+            }
+        };
+
+        let status = response.status();
+        let text = response.text().await?;
+        if status.is_success() {
+            return parse_model_catalog(&text);
+        }
+        last_error = Some(anyhow!("API key '{name}' returned {status}: {text}"));
+    }
+
+    Err(last_error.unwrap_or_else(|| anyhow!("All configured Gemini API keys failed.")))
 }
 
 pub fn settings_path() -> Result<PathBuf> {
@@ -431,19 +479,43 @@ pub fn reset_app_data() -> Result<()> {
     }
 }
 
-fn clear_app_secrets() -> Result<()> {
-    let output = std::process::Command::new("secret-tool")
-        .args(["clear", "service", SERVICE_NAME])
-        .output()
-        .context("Could not run secret-tool; install libsecret's command-line utilities")?;
-    if output.status.success() {
-        Ok(())
+fn run_keyring_async<F, T>(future: F) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(future))
     } else {
-        Err(anyhow!(
-            "Secret Service rejected credential removal: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ))
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("Could not build Tokio runtime for Secret Service keyring access")?;
+        rt.block_on(future)
     }
+}
+
+async fn open_keyring() -> Result<oo7::Keyring> {
+    let keyring = oo7::Keyring::new()
+        .await
+        .map_err(|err| anyhow!("Could not connect to Secret Service: {err}"))?;
+    if keyring.is_locked().await.unwrap_or(false) {
+        if let Err(unlock_err) = keyring.unlock().await {
+            tracing::warn!("Failed to unlock keyring automatically: {unlock_err}");
+            return Err(anyhow!("Secret Service keyring is locked: {unlock_err}"));
+        }
+    }
+    Ok(keyring)
+}
+
+fn clear_app_secrets() -> Result<()> {
+    run_keyring_async(async {
+        let keyring = open_keyring().await?;
+        keyring
+            .delete(&[("service", SERVICE_NAME)])
+            .await
+            .map_err(|err| anyhow!("Secret Service rejected credential removal: {err}"))?;
+        Ok(())
+    })
 }
 
 fn remove_saved_settings() -> Result<()> {
@@ -504,72 +576,54 @@ fn next_key_id() -> Result<String> {
 }
 
 fn get_secret(account: &str) -> Result<Option<String>> {
-    let output = std::process::Command::new("secret-tool")
-        .args(["lookup", "service", SERVICE_NAME, "account", account])
-        .output()
-        .context("Could not run secret-tool; install libsecret's command-line utilities")?;
+    run_keyring_async(async {
+        let keyring = open_keyring().await?;
+        let items = keyring
+            .search_items(&[("service", SERVICE_NAME), ("account", account)])
+            .await
+            .map_err(|err| anyhow!("Secret Service lookup failed: {err}"))?;
 
-    if output.status.success() {
-        let secret = String::from_utf8(output.stdout)
-            .context("Secret Service returned a key that is not valid UTF-8")?;
-        let secret = secret.trim();
-        return Ok((!secret.is_empty()).then(|| secret.to_string()));
-    }
-
-    let error = String::from_utf8_lossy(&output.stderr);
-    if output.status.code() == Some(1) && error.trim().is_empty() {
+        for item in items {
+            let secret_bytes = item
+                .secret()
+                .await
+                .map_err(|err| anyhow!("Could not read secret from Secret Service: {err}"))?;
+            let secret = String::from_utf8(secret_bytes.to_vec())
+                .context("Secret Service returned a key that is not valid UTF-8")?;
+            let secret = secret.trim();
+            if !secret.is_empty() {
+                return Ok(Some(secret.to_string()));
+            }
+        }
         Ok(None)
-    } else {
-        Err(anyhow!("Secret Service lookup failed: {}", error.trim()))
-    }
+    })
 }
 
 fn store_secret(account: &str, secret: &str, label: &str) -> Result<()> {
-    use std::io::Write;
-    let mut child = std::process::Command::new("secret-tool")
-        .args([
-            "store",
-            &format!("--label={label}"),
-            "service",
-            SERVICE_NAME,
-            "account",
-            account,
-        ])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .context("Could not run secret-tool; install libsecret's command-line utilities")?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("Could not write API key to Secret Service"))?;
-    stdin.write_all(secret.as_bytes())?;
-    drop(stdin);
-    let output = child.wait_with_output()?;
-    if output.status.success() {
+    run_keyring_async(async {
+        let keyring = open_keyring().await?;
+        keyring
+            .create_item(
+                label,
+                &[("service", SERVICE_NAME), ("account", account)],
+                secret.as_bytes(),
+                true,
+            )
+            .await
+            .map_err(|err| anyhow!("Could not store API key in Secret Service: {err}"))?;
         Ok(())
-    } else {
-        Err(anyhow!(
-            "Could not store API key in Secret Service: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ))
-    }
+    })
 }
 
 fn clear_secret(account: &str) -> Result<()> {
-    let output = std::process::Command::new("secret-tool")
-        .args(["clear", "service", SERVICE_NAME, "account", account])
-        .output()
-        .context("Could not run secret-tool")?;
-    if output.status.success() {
+    run_keyring_async(async {
+        let keyring = open_keyring().await?;
+        keyring
+            .delete(&[("service", SERVICE_NAME), ("account", account)])
+            .await
+            .map_err(|err| anyhow!("Could not remove API key from Secret Service: {err}"))?;
         Ok(())
-    } else {
-        Err(anyhow!(
-            "Could not remove API key from Secret Service: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ))
-    }
+    })
 }
 
 #[cfg(test)]

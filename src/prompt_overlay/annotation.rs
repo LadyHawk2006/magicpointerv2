@@ -8,6 +8,7 @@ pub enum Annotation {
     Pen(Vec<(f64, f64)>),
     Arrow { start: (f64, f64), end: (f64, f64) },
     Rect { start: (f64, f64), end: (f64, f64) },
+    Redact { start: (f64, f64), end: (f64, f64) },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub enum AnnotationTool {
     Pen,
     Arrow,
     Rect,
+    Redact,
 }
 
 pub fn apply_annotations_to_image(
@@ -94,6 +96,7 @@ pub fn apply_annotations_to_image(
                 let _ = cr.fill();
             }
             Annotation::Rect { start, end } => {
+                cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
                 let rx = start.0.min(end.0) * scale_x;
                 let ry = start.1.min(end.1) * scale_y;
                 let rw = (end.0 - start.0).abs() * scale_x;
@@ -101,6 +104,16 @@ pub fn apply_annotations_to_image(
 
                 cr.rectangle(rx, ry, rw, rh);
                 let _ = cr.stroke();
+            }
+            Annotation::Redact { start, end } => {
+                let rx = start.0.min(end.0) * scale_x;
+                let ry = start.1.min(end.1) * scale_y;
+                let rw = (end.0 - start.0).abs() * scale_x;
+                let rh = (end.1 - start.1).abs() * scale_y;
+
+                cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                cr.rectangle(rx, ry, rw, rh);
+                let _ = cr.fill();
             }
         }
     }
@@ -177,11 +190,27 @@ pub fn draw_annotations_on_context(
                 let _ = cr.fill();
             }
             Annotation::Rect { start, end } => {
+                cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
                 let rx = start.0.min(end.0) * width;
                 let ry = start.1.min(end.1) * height;
                 let rw = (end.0 - start.0).abs() * width;
                 let rh = (end.1 - start.1).abs() * height;
 
+                cr.rectangle(rx, ry, rw, rh);
+                let _ = cr.stroke();
+            }
+            Annotation::Redact { start, end } => {
+                let rx = start.0.min(end.0) * width;
+                let ry = start.1.min(end.1) * height;
+                let rw = (end.0 - start.0).abs() * width;
+                let rh = (end.1 - start.1).abs() * height;
+
+                cr.set_source_rgba(0.04, 0.04, 0.04, 0.98);
+                cr.rectangle(rx, ry, rw, rh);
+                let _ = cr.fill();
+
+                cr.set_source_rgba(0.3, 0.3, 0.3, 0.6);
+                cr.set_line_width(1.0);
                 cr.rectangle(rx, ry, rw, rh);
                 let _ = cr.stroke();
             }
@@ -191,6 +220,7 @@ pub fn draw_annotations_on_context(
     if let Some(active) = active_drawing {
         match active {
             Annotation::Pen(points) => {
+                cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
                 if points.len() >= 2 {
                     cr.move_to(points[0].0 * width, points[0].1 * height);
                     for p in &points[1..] {
@@ -200,6 +230,7 @@ pub fn draw_annotations_on_context(
                 }
             }
             Annotation::Arrow { start, end } => {
+                cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
                 let x0 = start.0 * width;
                 let y0 = start.1 * height;
                 let x1 = end.0 * width;
@@ -225,11 +256,27 @@ pub fn draw_annotations_on_context(
                 let _ = cr.fill();
             }
             Annotation::Rect { start, end } => {
+                cr.set_source_rgba(0.95, 0.22, 0.28, 0.95);
                 let rx = start.0.min(end.0) * width;
                 let ry = start.1.min(end.1) * height;
                 let rw = (end.0 - start.0).abs() * width;
                 let rh = (end.1 - start.1).abs() * height;
 
+                cr.rectangle(rx, ry, rw, rh);
+                let _ = cr.stroke();
+            }
+            Annotation::Redact { start, end } => {
+                let rx = start.0.min(end.0) * width;
+                let ry = start.1.min(end.1) * height;
+                let rw = (end.0 - start.0).abs() * width;
+                let rh = (end.1 - start.1).abs() * height;
+
+                cr.set_source_rgba(0.08, 0.08, 0.08, 0.85);
+                cr.rectangle(rx, ry, rw, rh);
+                let _ = cr.fill();
+
+                cr.set_source_rgba(1.0, 0.35, 0.35, 0.9);
+                cr.set_line_width(1.5);
                 cr.rectangle(rx, ry, rw, rh);
                 let _ = cr.stroke();
             }
@@ -286,5 +333,26 @@ mod tests {
         let result = apply_annotations_to_image(&img, &[]);
         assert_eq!(result.width(), 50);
         assert_eq!(result.height(), 50);
+    }
+
+    #[test]
+    fn redaction_annotation_blacks_out_target_pixels_in_memory() {
+        let mut img = RgbaImage::new(100, 100);
+        for p in img.pixels_mut() {
+            *p = image::Rgba([255, 255, 255, 255]);
+        }
+        let dynamic_img = DynamicImage::ImageRgba8(img);
+        let annots = vec![Annotation::Redact {
+            start: (0.2, 0.2),
+            end: (0.8, 0.8),
+        }];
+
+        let result = apply_annotations_to_image(&dynamic_img, &annots);
+        let rgba = result.to_rgba8();
+        let center = rgba.get_pixel(50, 50);
+        assert_eq!(center[0], 0);
+        assert_eq!(center[1], 0);
+        assert_eq!(center[2], 0);
+        assert_eq!(center[3], 255);
     }
 }

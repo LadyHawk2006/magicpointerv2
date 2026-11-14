@@ -41,6 +41,7 @@ struct OverlayState {
     cycle_index: usize,
     magnetic_snap_x: Option<f64>,
     magnetic_snap_y: Option<f64>,
+    montage_windows: Vec<SnappedWindow>,
 }
 
 pub fn show_selection_overlay<F, D>(app: &gtk4::Application, on_selected: F, on_dismiss: D)
@@ -108,6 +109,7 @@ where
         cycle_index: 0,
         magnetic_snap_x: None,
         magnetic_snap_y: None,
+        montage_windows: Vec::new(),
     }));
 
     let drawing_area = gtk4::DrawingArea::new();
@@ -194,6 +196,23 @@ where
                     render::draw_corner_brackets(cr, 4.0, 4.0, sw - 8.0, sh - 8.0, 28.0, 4.0);
                     render::draw_fullscreen_hint(cr, sw, sh);
                 }
+                SelectionMode::Montage => {
+                    for (idx, win) in current_state.montage_windows.iter().enumerate() {
+                        render::draw_montage_window(cr, win, idx);
+                    }
+                    if let Some(ref snapped) = current_state.hovered_window {
+                        let rx = snapped.local_rect.x as f64;
+                        let ry = snapped.local_rect.y as f64;
+                        let rw = snapped.local_rect.width as f64;
+                        let rh = snapped.local_rect.height as f64;
+
+                        cr.set_source_rgba(0.06, 0.78, 0.45, 0.35);
+                        cr.set_line_width(1.5);
+                        cr.rectangle(rx, ry, rw, rh);
+                        let _ = cr.stroke();
+                    }
+                    render::draw_montage_status(cr, current_state.montage_windows.len(), sw, sh);
+                }
                 SelectionMode::WindowSnap => {
                     if let Some(ref snapped) = current_state.hovered_window {
                         let rx = snapped.local_rect.x as f64;
@@ -243,7 +262,7 @@ where
         }
 
         match st.mode {
-            SelectionMode::WindowSnap => {
+            SelectionMode::WindowSnap | SelectionMode::Montage => {
                 let matching = find_all_snapped_windows(&windows_motion, x, y);
                 if matching != st.overlapping_windows {
                     st.overlapping_windows = matching;
@@ -363,9 +382,11 @@ where
     let win_weak = window.downgrade();
     let app_end = app.clone();
     let on_selected = Rc::new(on_selected);
+    let on_selected_drag = on_selected.clone();
     let on_dismiss_rc = Rc::new(on_dismiss);
     let on_dismiss_drag = on_dismiss_rc.clone();
     let windows_end = snapped_windows.clone();
+    let da_end = drawing_area.clone();
 
     gesture_drag.connect_drag_end(move |_, _offset_x, _offset_y| {
         let current_state = {
@@ -391,7 +412,7 @@ where
                 &app_end,
                 win_weak.upgrade(),
                 CaptureTarget::Region(full_rect),
-                &on_selected,
+                &on_selected_drag,
             );
             return;
         }
@@ -420,7 +441,7 @@ where
                         &app_end,
                         win_weak.upgrade(),
                         CaptureTarget::Region(rect),
-                        &on_selected,
+                        &on_selected_drag,
                     );
                 } else {
                     if let Some(win) = win_weak.upgrade() {
@@ -430,7 +451,24 @@ where
                 }
             }
             DragStatus::Pending { start_x, start_y } => {
-                if mode == SelectionMode::WindowSnap {
+                if mode == SelectionMode::Montage {
+                    let hovered = {
+                        let st = state_end.borrow();
+                        st.hovered_window.clone()
+                    };
+                    let target = hovered
+                        .or_else(|| find_snapped_window(&windows_end, start_x, start_y).cloned());
+
+                    if let Some(snapped) = target {
+                        let mut st = state_end.borrow_mut();
+                        if let Some(pos) = st.montage_windows.iter().position(|w| w.address == snapped.address) {
+                            st.montage_windows.remove(pos);
+                        } else {
+                            st.montage_windows.push(snapped);
+                        }
+                        da_end.queue_draw();
+                    }
+                } else if mode == SelectionMode::WindowSnap {
                     let hovered = {
                         let st = state_end.borrow();
                         st.hovered_window.clone()
@@ -453,7 +491,7 @@ where
                                 class: snapped.class,
                                 address: snapped.address,
                             },
-                            &on_selected,
+                            &on_selected_drag,
                         );
                     } else {
                         info!("Clicked empty screen area; dismissing selection");
@@ -485,6 +523,8 @@ where
     let on_dismiss_key = on_dismiss_rc.clone();
     let state_key = state.clone();
     let da_key = drawing_area.clone();
+    let app_key = app.clone();
+    let on_selected_key = on_selected.clone();
 
     key_controller.connect_key_pressed(move |_, key, _, modifier| {
         if key == gdk::Key::Escape {
@@ -493,11 +533,35 @@ where
             }
             on_dismiss_key();
             glib::Propagation::Stop
+        } else if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
+            let montage_targets: Vec<CaptureTarget> = {
+                let st = state_key.borrow();
+                st.montage_windows
+                    .iter()
+                    .map(|w| CaptureTarget::Window {
+                        rect: w.compositor_rect,
+                        title: w.title.clone(),
+                        class: w.class.clone(),
+                        address: w.address.clone(),
+                    })
+                    .collect()
+            };
+            if !montage_targets.is_empty() {
+                dismiss_and_capture(
+                    &app_key,
+                    win_weak_key.upgrade(),
+                    CaptureTarget::Montage(montage_targets),
+                    &on_selected_key,
+                );
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
         } else if key == gdk::Key::space {
             let mut st = state_key.borrow_mut();
             st.mode = st.mode.next();
             match st.mode {
-                SelectionMode::WindowSnap => {
+                SelectionMode::WindowSnap | SelectionMode::Montage => {
                     st.hovered_window = st.overlapping_windows.first().cloned();
                     if st.hovered_window.is_some() {
                         da_key.set_cursor_from_name(Some("pointer"));

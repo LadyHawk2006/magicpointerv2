@@ -20,16 +20,19 @@ The application currently:
 - Displays responses in a regular GTK4 window. The compositor controls its
   placement; it is not guaranteed to appear beside the selection.
 - Stores preferences and API-key metadata in JSON and API-key values in Secret
-  Service using `secret-tool`. The app intentionally invokes that executable;
-  it is not a zero-subprocess application.
+  Service using pure-Rust D-Bus via `oo7` (with fallback and compatibility
+  for existing secret-tool collections).
 - Creates and updates a managed Hyprland Lua module for the chat-window rule
   and Home key binding. It appends a `require("magicpointerv2")` line to the
   user's `hyprland.lua` only when missing, and reloads Hyprland when managed
   configuration changes.
-- Supports saved model attempt ordering, request-generation settings, and
-  connection/response/stream-idle timeouts. Spatial hardware context reads the
-  installed Linux distribution from os-release files instead of assuming
-  Arch.
+- Supports saved model attempt ordering, request-generation settings,
+  live catalog refresh from Gemini models API, connection/response/stream-idle
+  timeouts, Google Search grounding toggle chip, privacy redactions in the
+  annotation canvas, visual callout bounding box overlays, multi-window montage
+  capture, persistent system instructions & custom quick chips, and opt-in
+  workspace window tree context. Spatial hardware context reads the installed
+  Linux distribution from os-release files instead of assuming Arch.
 
 See [README.md](./README.md) for user-facing setup and behavior, and
 [description.txt](./description.txt) for the detailed scope, architecture,
@@ -122,6 +125,6 @@ protocol.
 
 Builds require a Rust toolchain supporting edition 2024, Cargo, a C toolchain,
 pkg-config, GTK4 and GTK4 Layer Shell development libraries, and the native
-dependencies of the Rust crates. Runtime keyring use additionally requires
-`secret-tool` and an available Secret Service. Do not add dependencies or
+dependencies of the Rust crates. Runtime keyring use connects directly to an
+available D-Bus Secret Service via `oo7`. Do not add dependencies or
 tooling unless the requested work needs them.

@@ -79,6 +79,8 @@ title, and user-entered context to requests.
 - **Spacebar mode switcher**: Press **Space** to toggle between:
   - *Window Snap*: Automatically spotlights and locks to the window under the
     cursor; click to capture.
+  - *Montage*: Multi-window capture mode. Click multiple windows to highlight them in emerald
+    and press **Enter** to stitch them into a labeled composite image in memory.
   - *Region Selection*: Pure freeform rectangular drag selection.
   - *Full Monitor*: Spotlights the whole monitor; one click captures everything.
 - **Tab / Scroll window cycling**: When windows overlap under the cursor, press
@@ -109,13 +111,18 @@ title, and user-entered context to requests.
 ### Prompt and chat
 
 - Shows a capture preview alongside the initial prompt composer.
-- **Large-canvas markup modal**: Click the thumbnail or "Annotate" to open a
-  spacious 1280×720 overlay for precise drawing with Pen, Arrow, Box, Undo (Ctrl+Z),
-  and Clear tools. Vector annotations are kept in memory without intermediate image
-  re-encoding; the final image is only re-encoded once when the prompt is submitted.
-- **Quick-action chips**: One-click zero-typing pills below the entry
-  (**Explain**, **Extract Code**, **Debug Error**, **Summarize**, **Translate**) to
-  immediately dispatch common prompts.
+- **Large-canvas markup modal & Privacy Redaction**: Click the thumbnail or "Annotate" to open a
+  spacious 1280×720 overlay for precise drawing with Pen, Arrow, Box, Redact, Undo (Ctrl+Z),
+  and Clear tools. The **Redact tool** blacks out rectangles in memory to scrub API keys, tokens,
+  or private data before JPEG encoding and transmission to Gemini.
+- **Google Search Grounding Toggle**: Web-search toggle chip in the prompt composer that enables
+  Gemini's live `google_search` grounding per request for real-time web verification.
+- **Gemini-Driven Visual Callouts (Bounding Boxes)**: Detects Gemini's native `[0, 1000]` 2D coordinates
+  (`{"box_2d": [ymin, xmin, ymax, xmax], "label": "..."}`) in response streams, automatically rendering
+  labeled Cairo highlight boxes directly over the preview image inside the chat window.
+- **Quick-action chips & Custom Presets**: Built-in zero-typing pills
+  (**Explain**, **Extract Code**, **Debug Error**, **Summarize**, **Translate**) plus configurable custom
+  quick-action chips and persistent custom system instructions configured via Settings.
 - Opens a floating, regular GTK Wayland chat window after the initial prompt is
   submitted.
 - **Enter** sends or submits the prompt; **Shift+Enter** inserts a newline.
@@ -153,9 +160,11 @@ title, and user-entered context to requests.
 
 Settings include:
 
-- Multiple named Gemini API keys, a selectable primary key, and fallback keys.
-- Gemini model attempt order, including drag-to-reorder and adding models from
-  the bundled `models.txt` catalog.
+- Multiple named Gemini API keys, a selectable primary key, and fallback keys stored
+  in Secret Service using pure-Rust D-Bus via `oo7`.
+- Gemini model attempt order, including drag-to-reorder, adding models from
+  the bundled `models.txt` catalog, and a **Refresh catalog** button to query live models.
+- System instructions & Presets: persistent user system instruction and editable custom quick-action chips.
 - Generation temperature, maximum output tokens, connection timeout,
   initial-response timeout, and stream-idle timeout.
 - Response font family and size.
@@ -164,8 +173,8 @@ Settings include:
 - Optional custom GTK CSS file.
 - Hyprland response-window width, height, position preset, border, shadow,
   blur, glow, and opacity.
-- Spatial-intelligence controls for hardware details, active-window title, and
-  user-provided context.
+- Spatial-intelligence controls for hardware details, active-window title,
+  workspace open windows list, and user-provided context.
 
 Settings can be opened from the chat gear button or by launching the
 application with `--settings`. Sections are collapsible, with Gemini model

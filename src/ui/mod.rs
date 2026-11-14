@@ -17,6 +17,7 @@ use crate::settings::{self, AppSettings};
 use crate::settings_ui;
 
 pub mod attachments;
+pub mod callouts;
 pub mod indicator;
 pub mod markdown;
 
@@ -112,7 +113,24 @@ pub fn build_floating_card(
     if let Some(context) = captured_context.as_deref() {
         initial_capture.set_tooltip_text(Some(context));
     }
-    messages_box.append(&initial_capture);
+
+    let capture_overlay = gtk4::Overlay::new();
+    capture_overlay.add_css_class("initial-capture-overlay");
+    capture_overlay.set_child(Some(&initial_capture));
+
+    let callouts_da = gtk4::DrawingArea::new();
+    callouts_da.set_can_target(false);
+    let detected_callouts: Rc<RefCell<Vec<callouts::VisualCallout>>> =
+        Rc::new(RefCell::new(Vec::new()));
+    let callouts_draw = detected_callouts.clone();
+    let img_w = captured_image.width() as f64;
+    let img_h = captured_image.height() as f64;
+    callouts_da.set_draw_func(move |_, cr, width, height| {
+        let list = callouts_draw.borrow();
+        callouts::draw_callouts_on_context(cr, &list, img_w, img_h, width as f64, height as f64);
+    });
+    capture_overlay.add_overlay(&callouts_da);
+    messages_box.append(&capture_overlay);
 
     let pending_images = Rc::new(RefCell::new(vec![captured_image]));
     let initial_turn = Rc::new(RefCell::new(true));
@@ -126,6 +144,8 @@ pub fn build_floating_card(
         let fetch_count = fetch_count.clone();
         let fetch_glow = fetch_glow.clone();
         let fetch_animation = fetch_animation.clone();
+        let callouts_store = detected_callouts.clone();
+        let callouts_da_ref = callouts_da.clone();
 
         move |mut rx: mpsc::Receiver<String>, response: gtk4::Box| {
             let scrolled_weak = scrolled_weak.clone();
@@ -135,6 +155,8 @@ pub fn build_floating_card(
             let accumulated = Rc::new(RefCell::new(String::new()));
             let last_store = last_ai_store.clone();
             let response = response.clone();
+            let callouts_target = callouts_store.clone();
+            let da_refresh = callouts_da_ref.clone();
 
             glib::spawn_future_local(async move {
                 while let Some(token) = rx.recv().await {
@@ -144,6 +166,12 @@ pub fn build_floating_card(
 
                     markdown::render_markdown(&response, &raw_text);
 
+                    let parsed = callouts::parse_visual_callouts(&raw_text);
+                    if *callouts_target.borrow() != parsed {
+                        *callouts_target.borrow_mut() = parsed;
+                        da_refresh.queue_draw();
+                    }
+
                     // Auto-scroll to bottom
                     if let Some(scr) = scrolled_weak.upgrade() {
                         scroll_to_bottom(&scr);
@@ -152,6 +180,13 @@ pub fn build_floating_card(
 
                 if accumulated.borrow().is_empty() {
                     markdown::render_markdown(&response, "No response received.");
+                } else {
+                    let raw_text = accumulated.borrow().clone();
+                    let parsed = callouts::parse_visual_callouts(&raw_text);
+                    if *callouts_target.borrow() != parsed {
+                        *callouts_target.borrow_mut() = parsed;
+                        da_refresh.queue_draw();
+                    }
                 }
                 finish_fetch_indicator(&fetch_count, &fetch_glow, &fetch_animation);
             });

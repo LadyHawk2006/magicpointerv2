@@ -83,6 +83,10 @@ pub fn show_annotation_modal<F>(
     let rect_btn = gtk4::Button::with_label("Box");
     rect_btn.add_css_class("annotation-tool-pill");
 
+    let redact_btn = gtk4::Button::with_label("Redact");
+    redact_btn.add_css_class("annotation-tool-pill");
+    redact_btn.set_tooltip_text(Some("Blackout/redact sensitive information"));
+
     let clear_btn = gtk4::Button::with_label("Clear");
     clear_btn.add_css_class("annotation-tool-pill");
 
@@ -92,6 +96,7 @@ pub fn show_annotation_modal<F>(
     tools_box.append(&pen_btn);
     tools_box.append(&arrow_btn);
     tools_box.append(&rect_btn);
+    tools_box.append(&redact_btn);
     tools_box.append(&clear_btn);
     tools_box.append(&done_btn);
     header.append(&tools_box);
@@ -125,33 +130,52 @@ pub fn show_annotation_modal<F>(
     let b_pen = pen_btn.clone();
     let b_arrow = arrow_btn.clone();
     let b_rect = rect_btn.clone();
+    let b_redact = redact_btn.clone();
     pen_btn.connect_clicked(move |_| {
         *tool_pen.borrow_mut() = AnnotationTool::Pen;
         b_pen.add_css_class("active");
         b_arrow.remove_css_class("active");
         b_rect.remove_css_class("active");
+        b_redact.remove_css_class("active");
     });
 
     let tool_arrow = current_tool.clone();
     let b_pen2 = pen_btn.clone();
     let b_arrow2 = arrow_btn.clone();
     let b_rect2 = rect_btn.clone();
+    let b_redact2 = redact_btn.clone();
     arrow_btn.connect_clicked(move |_| {
         *tool_arrow.borrow_mut() = AnnotationTool::Arrow;
         b_arrow2.add_css_class("active");
         b_pen2.remove_css_class("active");
         b_rect2.remove_css_class("active");
+        b_redact2.remove_css_class("active");
     });
 
     let tool_rect = current_tool.clone();
     let b_pen3 = pen_btn.clone();
     let b_arrow3 = arrow_btn.clone();
     let b_rect3 = rect_btn.clone();
+    let b_redact3 = redact_btn.clone();
     rect_btn.connect_clicked(move |_| {
         *tool_rect.borrow_mut() = AnnotationTool::Rect;
         b_rect3.add_css_class("active");
         b_pen3.remove_css_class("active");
         b_arrow3.remove_css_class("active");
+        b_redact3.remove_css_class("active");
+    });
+
+    let tool_redact = current_tool.clone();
+    let b_pen4 = pen_btn.clone();
+    let b_arrow4 = arrow_btn.clone();
+    let b_rect4 = rect_btn.clone();
+    let b_redact4 = redact_btn.clone();
+    redact_btn.connect_clicked(move |_| {
+        *tool_redact.borrow_mut() = AnnotationTool::Redact;
+        b_redact4.add_css_class("active");
+        b_pen4.remove_css_class("active");
+        b_arrow4.remove_css_class("active");
+        b_rect4.remove_css_class("active");
     });
 
     let clear_annots = annotations.clone();
@@ -183,6 +207,10 @@ pub fn show_annotation_modal<F>(
                 end: (nx, ny),
             },
             AnnotationTool::Rect => Annotation::Rect {
+                start: (nx, ny),
+                end: (nx, ny),
+            },
+            AnnotationTool::Redact => Annotation::Redact {
                 start: (nx, ny),
                 end: (nx, ny),
             },
@@ -224,6 +252,9 @@ pub fn show_annotation_modal<F>(
                     *end = (nx, ny);
                 }
                 Annotation::Rect { end, .. } => {
+                    *end = (nx, ny);
+                }
+                Annotation::Redact { end, .. } => {
                     *end = (nx, ny);
                 }
             }

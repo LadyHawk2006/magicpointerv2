@@ -20,12 +20,21 @@ pub fn compose_spatial_prompt(
     {
         context.push(format!("Active window: {}", title.trim()));
     }
+    if settings.spatial.attach_workspace_windows {
+        if let Ok(tree) = crate::hypr_ipc::get_workspace_windows_summary() {
+            context.push(format!("Workspace open windows:\n{tree}"));
+        }
+    }
     if !settings.spatial.custom_text.trim().is_empty() {
         context.push(format!(
             "User-provided context: {}",
             settings.spatial.custom_text.trim()
         ));
     }
+    context.push(
+        "Visual callout guidance: When referencing specific buttons, UI elements, errors, or areas in the capture, you may identify them with 2D bounding boxes in [0, 1000] normalized coordinates using `{\"box_2d\": [ymin, xmin, ymax, xmax], \"label\": \"...\"}`."
+            .to_string(),
+    );
     if context.is_empty() {
         return prompt.to_string();
     }
@@ -163,6 +172,17 @@ mod tests {
         assert!(prompt.contains("Kernel:"));
         assert!(prompt.contains(std::env::consts::ARCH));
         assert!(prompt.ends_with("User request:\nQuestion"));
+    }
+
+    #[test]
+    fn spatial_workspace_windows_toggle() {
+        let mut settings = AppSettings::default();
+        settings.spatial.enabled = true;
+        settings.spatial.attach_workspace_windows = true;
+
+        let prompt = compose_spatial_prompt(&settings, None, "Check windows");
+        assert!(prompt.contains("Visual callout guidance:"));
+        assert!(prompt.ends_with("User request:\nCheck windows"));
     }
 
     #[test]

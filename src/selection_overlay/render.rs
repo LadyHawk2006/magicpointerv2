@@ -10,6 +10,12 @@ pub fn draw_mode_pill(cr: &cairo::Context, mode: SelectionMode, screen_w: f64) {
                 mode_str
             )
         }
+        SelectionMode::Montage => {
+            format!(
+                "[Space] Mode: {}  •  Click 2–3 windows, [Enter] capture",
+                mode_str
+            )
+        }
         SelectionMode::RegionSelection => {
             format!("[Space] Mode: {}  •  Drag custom crop box", mode_str)
         }
@@ -265,4 +271,96 @@ pub fn draw_dimension_badge(
     let text_y = pill_y + (pill_h + extents.height()) / 2.0;
     cr.move_to(text_x, text_y);
     let _ = cr.show_text(&dim_text);
+}
+
+pub fn draw_montage_window(cr: &cairo::Context, snapped: &SnappedWindow, index: usize) {
+    let rx = snapped.local_rect.x as f64;
+    let ry = snapped.local_rect.y as f64;
+    let rw = snapped.local_rect.width as f64;
+    let rh = snapped.local_rect.height as f64;
+
+    cr.save().expect("cairo save");
+    cr.set_operator(cairo::Operator::Clear);
+    cr.rectangle(rx, ry, rw, rh);
+    let _ = cr.fill();
+    cr.restore().expect("cairo restore");
+
+    // Emerald tint for montage selection
+    cr.set_source_rgba(0.06, 0.78, 0.45, 0.08);
+    cr.rectangle(rx, ry, rw, rh);
+    let _ = cr.fill();
+
+    cr.set_source_rgba(0.06, 0.78, 0.45, 0.95);
+    cr.set_line_width(2.5);
+    cr.rectangle(rx, ry, rw, rh);
+    let _ = cr.stroke();
+
+    // Montage badge
+    let badge_text = format!("Window #{} • {}", index + 1, snapped.class);
+    cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(12.0);
+
+    let extents = match cr.text_extents(&badge_text) {
+        Ok(ext) => ext,
+        Err(_) => return,
+    };
+
+    let pill_w = extents.width() + 20.0;
+    let pill_h = 24.0;
+    let pill_x = rx + 8.0;
+    let pill_y = ry + 8.0;
+
+    cr.set_source_rgba(0.05, 0.15, 0.10, 0.92);
+    draw_rounded_rect(cr, pill_x, pill_y, pill_w, pill_h, 6.0);
+    let _ = cr.fill();
+
+    cr.set_source_rgba(0.06, 0.78, 0.45, 0.90);
+    cr.set_line_width(1.5);
+    draw_rounded_rect(cr, pill_x, pill_y, pill_w, pill_h, 6.0);
+    let _ = cr.stroke();
+
+    cr.set_source_rgba(0.95, 0.98, 0.95, 1.0);
+    let text_x = pill_x + 10.0;
+    let text_y = pill_y + (pill_h + extents.height()) / 2.0;
+    cr.move_to(text_x, text_y);
+    let _ = cr.show_text(&badge_text);
+}
+
+pub fn draw_montage_status(cr: &cairo::Context, count: usize, screen_w: f64, screen_h: f64) {
+    let status_text = if count == 0 {
+        "Click windows to add to montage (or press Space to switch mode)".to_string()
+    } else {
+        format!(
+            "Montage: {} window(s) selected • Press Enter to capture or click more",
+            count
+        )
+    };
+
+    cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(13.0);
+
+    let extents = match cr.text_extents(&status_text) {
+        Ok(ext) => ext,
+        Err(_) => return,
+    };
+
+    let pill_w = extents.width() + 28.0;
+    let pill_h = 32.0;
+    let pill_x = (screen_w - pill_w) / 2.0;
+    let pill_y = screen_h - pill_h - 24.0;
+
+    cr.set_source_rgba(0.05, 0.12, 0.08, 0.95);
+    draw_rounded_rect(cr, pill_x, pill_y, pill_w, pill_h, 8.0);
+    let _ = cr.fill();
+
+    cr.set_source_rgba(0.06, 0.78, 0.45, 0.85);
+    cr.set_line_width(1.5);
+    draw_rounded_rect(cr, pill_x, pill_y, pill_w, pill_h, 8.0);
+    let _ = cr.stroke();
+
+    cr.set_source_rgba(0.92, 0.98, 0.94, 1.0);
+    let text_x = pill_x + 14.0;
+    let text_y = pill_y + (pill_h + extents.height()) / 2.0;
+    cr.move_to(text_x, text_y);
+    let _ = cr.show_text(&status_text);
 }

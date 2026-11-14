@@ -70,6 +70,26 @@ fn start_selection(
                                 Some(format!("{} ({})", class, title)),
                             )
                         }
+                        screencapture::CaptureTarget::Montage(targets) => {
+                            let cursor =
+                                hypr_ipc::get_hyprland_state().map(|s| s.cursor).unwrap_or((
+                                    rect.x.saturating_add(rect.width as i32),
+                                    rect.y.saturating_add(rect.height as i32),
+                                ));
+                            let labels: Vec<String> = targets
+                                .iter()
+                                .map(|t| match t {
+                                    screencapture::CaptureTarget::Window {
+                                        class, title, ..
+                                    } => {
+                                        format!("{} ({})", class, title)
+                                    }
+                                    _ => "Region".to_string(),
+                                })
+                                .collect();
+                            let combined = format!("Montage: {}", labels.join(" + "));
+                            (cursor, Some("Montage".to_string()), Some(combined))
+                        }
                         screencapture::CaptureTarget::Region(_) => {
                             match hypr_ipc::get_hyprland_state() {
                                 Ok(state) => {
@@ -129,12 +149,15 @@ fn start_selection(
                     let submit_active_window_title = active_window_title.clone();
                     let dismiss_app = app_handle.clone();
                     let overlay_opacity = settings_state.borrow().overlay_opacity;
+                    let custom_chips = settings_state.borrow().custom_chips.clone();
                     prompt_overlay::show_prompt_overlay(
                         &app_handle,
                         image,
                         cursor,
                         overlay_opacity,
-                        move |prompt, image| {
+                        custom_chips,
+                        move |prompt, image, search_grounding| {
+                            submit_session.set_search_grounding(search_grounding);
                             let chat_window = ui::build_floating_card(
                                 &submit_app,
                                 image,

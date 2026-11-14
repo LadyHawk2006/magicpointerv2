@@ -15,6 +15,7 @@ pub enum CaptureTarget {
         class: String,
         address: String,
     },
+    Montage(Vec<CaptureTarget>),
 }
 
 impl CaptureTarget {
@@ -22,6 +23,34 @@ impl CaptureTarget {
         match self {
             CaptureTarget::Region(r) => *r,
             CaptureTarget::Window { rect, .. } => *rect,
+            CaptureTarget::Montage(targets) => {
+                if targets.is_empty() {
+                    Rect {
+                        x: 0,
+                        y: 0,
+                        width: 1,
+                        height: 1,
+                    }
+                } else {
+                    let mut min_x = i32::MAX;
+                    let mut min_y = i32::MAX;
+                    let mut max_x = i32::MIN;
+                    let mut max_y = i32::MIN;
+                    for t in targets {
+                        let r = t.rect();
+                        min_x = min_x.min(r.x);
+                        min_y = min_y.min(r.y);
+                        max_x = max_x.max(r.x + r.width as i32);
+                        max_y = max_y.max(r.y + r.height as i32);
+                    }
+                    Rect {
+                        x: min_x,
+                        y: min_y,
+                        width: (max_x - min_x).max(1) as u32,
+                        height: (max_y - min_y).max(1) as u32,
+                    }
+                }
+            }
         }
     }
 }
@@ -37,7 +66,87 @@ pub fn capture_target(target: &CaptureTarget) -> Result<DynamicImage> {
             class,
             address,
         } => capture_window_or_fallback(*rect, title, class, address),
+        CaptureTarget::Montage(targets) => capture_montage(targets),
     }
+}
+
+pub fn capture_montage(targets: &[CaptureTarget]) -> Result<DynamicImage> {
+    if targets.is_empty() {
+        return Err(anyhow!("Cannot capture montage with empty targets"));
+    }
+    let mut captured_images = Vec::new();
+    for target in targets {
+        let label = match target {
+            CaptureTarget::Window { class, title, .. } => format!("{class}: {title}"),
+            _ => "Region".to_string(),
+        };
+        let img = capture_target(target)?;
+        captured_images.push((label, img));
+    }
+    create_montage_composite(&captured_images)
+}
+
+pub fn create_montage_composite(images: &[(String, DynamicImage)]) -> Result<DynamicImage> {
+    if images.is_empty() {
+        return Err(anyhow!("Cannot create montage with 0 images"));
+    }
+    if images.len() == 1 {
+        return Ok(images[0].1.clone());
+    }
+
+    let header_height = 28u32;
+    let separator = 8u32;
+
+    // Total width is sum of widths plus separators between them
+    let total_width: u32 = images.iter().map(|(_, img)| img.width()).sum::<u32>()
+        + separator * (images.len() as u32 - 1);
+    let max_img_height: u32 = images
+        .iter()
+        .map(|(_, img)| img.height())
+        .max()
+        .unwrap_or(0);
+    let total_height = max_img_height + header_height;
+
+    let mut composite = image::RgbaImage::from_pixel(
+        total_width,
+        total_height,
+        image::Rgba([18, 22, 28, 255]), // Dark background
+    );
+
+    let mut current_x = 0u32;
+    for (_idx, (_label, img)) in images.iter().enumerate() {
+        let rgba = img.to_rgba8();
+        let img_w = rgba.width();
+        let img_h = rgba.height();
+
+        // Overlay window image at (current_x, header_height)
+        for y in 0..img_h {
+            for x in 0..img_w {
+                if current_x + x < total_width && header_height + y < total_height {
+                    let pixel = rgba.get_pixel(x, y);
+                    composite.put_pixel(current_x + x, header_height + y, *pixel);
+                }
+            }
+        }
+
+        // Draw top header bar for each panel
+        for y in 0..header_height {
+            for x in 0..img_w {
+                if current_x + x < total_width {
+                    let header_color = if y == header_height - 1 {
+                        image::Rgba([70, 95, 130, 255]) // Border line
+                    } else {
+                        image::Rgba([30, 36, 46, 255]) // Header bar background
+                    };
+                    composite.put_pixel(current_x + x, y, header_color);
+                }
+            }
+        }
+
+        current_x += img_w + separator;
+    }
+
+    Ok(DynamicImage::ImageRgba8(composite))
 }
 
 pub fn capture_screen_region(x: i32, y: i32, width: u32, height: u32) -> Result<DynamicImage> {

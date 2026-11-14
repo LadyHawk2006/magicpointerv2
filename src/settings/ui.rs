@@ -101,9 +101,59 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     }
     let add_model = gtk4::Button::with_label("Add model");
     add_model.set_sensitive(!model_catalog.is_empty());
+    let refresh_catalog = gtk4::Button::with_label("Refresh catalog");
+    refresh_catalog.set_tooltip_text(Some("Query Gemini API for live available models"));
     model_picker_row.append(&model_picker);
     model_picker_row.append(&add_model);
+    model_picker_row.append(&refresh_catalog);
     model_content.append(&model_picker_row);
+
+    let refresh_status = status.clone();
+    let refresh_picker = model_picker.clone();
+    let refresh_add_btn = add_model.clone();
+    let refresh_btn_self = refresh_catalog.clone();
+    refresh_catalog.connect_clicked(move |_| {
+        let status_ui = refresh_status.clone();
+        let picker_ui = refresh_picker.clone();
+        let add_btn_ui = refresh_add_btn.clone();
+        let btn_ui = refresh_btn_self.clone();
+
+        btn_ui.set_sensitive(false);
+        status_ui.set_text("Fetching live Gemini models from API...");
+
+        gtk4::glib::spawn_future_local(async move {
+            match settings::fetch_live_models().await {
+                Ok(models) => {
+                    picker_ui.remove_all();
+                    for (model_id, display_name) in &models {
+                        picker_ui.append(
+                            Some(model_id),
+                            &format!(
+                                "{} ({})",
+                                compact_model_label(display_name, 32),
+                                compact_model_label(model_id, 28)
+                            ),
+                        );
+                    }
+                    if let Some((model_id, _)) = models.first() {
+                        picker_ui.set_active_id(Some(model_id));
+                    }
+                    add_btn_ui.set_sensitive(!models.is_empty());
+                    status_ui.set_text(&format!(
+                        "Successfully refreshed {} models from Gemini API.",
+                        models.len()
+                    ));
+                }
+                Err(err) => {
+                    tracing::warn!("Could not refresh models from API: {err}");
+                    status_ui.set_text(&format!(
+                        "Live model refresh failed ({err}); using catalog."
+                    ));
+                }
+            }
+            btn_ui.set_sensitive(true);
+        });
+    });
 
     let add_model_order = model_order.clone();
     let add_model_rows = model_rows.clone();
@@ -329,8 +379,12 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
     hardware.set_active(shared.borrow().spatial.attach_hardware_info);
     let active_title = gtk4::CheckButton::with_label("Attach active window title");
     active_title.set_active(shared.borrow().spatial.attach_active_window_title);
+    let workspace_windows =
+        gtk4::CheckButton::with_label("Attach open workspace windows (window tree context)");
+    workspace_windows.set_active(shared.borrow().spatial.attach_workspace_windows);
     spatial_options.append(&hardware);
     spatial_options.append(&active_title);
+    spatial_options.append(&workspace_windows);
     spatial_options.append(&gtk4::Label::new(Some(
         "Additional context to include with every request",
     )));
@@ -351,6 +405,73 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
         reveal_options.set_visible(button.is_active());
     });
     content.append(&spatial_section);
+
+    let (preset_section, preset_content) =
+        collapsible_section("System instructions & Presets", false);
+    let sys_label = gtk4::Label::new(Some(
+        "Persistent system prompt (e.g. 'Always answer concisely with Arch/Linux-specific commands'):",
+    ));
+    sys_label.set_xalign(0.0);
+    sys_label.set_wrap(true);
+    sys_label.add_css_class("dim-label");
+    preset_content.append(&sys_label);
+
+    let sys_instruction_view = gtk4::TextView::new();
+    sys_instruction_view.set_wrap_mode(gtk4::WrapMode::WordChar);
+    sys_instruction_view.set_height_request(70);
+    sys_instruction_view
+        .buffer()
+        .set_text(&shared.borrow().system_instruction);
+    let sys_scroll = gtk4::ScrolledWindow::new();
+    sys_scroll.set_min_content_height(70);
+    sys_scroll.set_child(Some(&sys_instruction_view));
+    preset_content.append(&sys_scroll);
+
+    let chips_label = gtk4::Label::new(Some(
+        "Custom quick-action chips (available alongside default prompt chips):",
+    ));
+    chips_label.set_xalign(0.0);
+    chips_label.set_wrap(true);
+    chips_label.add_css_class("dim-label");
+    chips_label.set_margin_top(8);
+    preset_content.append(&chips_label);
+
+    let custom_chips_state = Rc::new(RefCell::new(shared.borrow().custom_chips.clone()));
+    let chips_container = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    preset_content.append(&chips_container);
+    rebuild_chips_ui(&custom_chips_state, &chips_container);
+
+    let add_chip_row = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    let new_chip_label = gtk4::Entry::new();
+    new_chip_label.set_placeholder_text(Some("Chip Label (e.g. Arch Fix)"));
+    new_chip_label.set_width_chars(14);
+
+    let new_chip_prompt = gtk4::Entry::new();
+    new_chip_prompt.set_placeholder_text(Some("Prompt (e.g. Provide Arch Linux fix)"));
+    new_chip_prompt.set_hexpand(true);
+
+    let add_chip_btn = gtk4::Button::with_label("Add chip");
+    add_chip_row.append(&new_chip_label);
+    add_chip_row.append(&new_chip_prompt);
+    add_chip_row.append(&add_chip_btn);
+    preset_content.append(&add_chip_row);
+
+    let add_chips_state = custom_chips_state.clone();
+    let add_chips_box = chips_container.clone();
+    let add_lbl_entry = new_chip_label.clone();
+    let add_prompt_entry = new_chip_prompt.clone();
+    add_chip_btn.connect_clicked(move |_| {
+        let label = add_lbl_entry.text().trim().to_string();
+        let prompt = add_prompt_entry.text().trim().to_string();
+        if !label.is_empty() && !prompt.is_empty() {
+            add_chips_state.borrow_mut().push((label, prompt));
+            add_lbl_entry.set_text("");
+            add_prompt_entry.set_text("");
+            rebuild_chips_ui(&add_chips_state, &add_chips_box);
+        }
+    });
+
+    content.append(&preset_section);
     content.append(&model_section);
 
     let footer = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
@@ -622,9 +743,15 @@ pub fn show_settings(app: &gtk4::Application, shared: Rc<RefCell<AppSettings>>) 
         draft.spatial.enabled = spatial_enabled.is_active();
         draft.spatial.attach_hardware_info = hardware.is_active();
         draft.spatial.attach_active_window_title = active_title.is_active();
+        draft.spatial.attach_workspace_windows = workspace_windows.is_active();
         let buffer = custom_context.buffer();
         let (start, end) = buffer.bounds();
         draft.spatial.custom_text = buffer.text(&start, &end, true).to_string();
+
+        let sys_buf = sys_instruction_view.buffer();
+        let (sys_start, sys_end) = sys_buf.bounds();
+        draft.system_instruction = sys_buf.text(&sys_start, &sys_end, true).to_string();
+        draft.custom_chips = custom_chips_state.borrow().clone();
 
         match settings::apply_appearance(&save_app, &draft).and_then(|()| draft.save()) {
             Ok(()) => {
@@ -867,6 +994,40 @@ fn append_api_key_row(
             }
         }
     });
+}
+
+fn rebuild_chips_ui(chips_state: &Rc<RefCell<Vec<(String, String)>>>, container: &gtk4::Box) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+    let chips = chips_state.borrow().clone();
+    for (idx, (label, prompt_text)) in chips.into_iter().enumerate() {
+        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+        let lbl = gtk4::Label::new(Some(&format!("{label}: \"{prompt_text}\"")));
+        lbl.set_xalign(0.0);
+        lbl.set_hexpand(true);
+        lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        lbl.add_css_class("dim-label");
+
+        let remove_btn = gtk4::Button::from_icon_name("window-close-symbolic");
+        remove_btn.add_css_class("flat");
+        remove_btn.set_tooltip_text(Some("Delete custom chip"));
+
+        let state_remove = chips_state.clone();
+        let box_remove = container.clone();
+        remove_btn.connect_clicked(move |_| {
+            let mut list = state_remove.borrow_mut();
+            if idx < list.len() {
+                list.remove(idx);
+            }
+            drop(list);
+            rebuild_chips_ui(&state_remove, &box_remove);
+        });
+
+        row.append(&lbl);
+        row.append(&remove_btn);
+        container.append(&row);
+    }
 }
 
 fn collapsible_section(title: &str, expanded: bool) -> (gtk4::Expander, gtk4::Box) {

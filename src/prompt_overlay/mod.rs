@@ -25,10 +25,11 @@ pub fn show_prompt_overlay<F, D>(
     image: DynamicImage,
     cursor: (i32, i32),
     opacity: f64,
+    custom_chips: Vec<(String, String)>,
     on_submit: F,
     on_dismiss: D,
 ) where
-    F: FnOnce(String, DynamicImage) + 'static,
+    F: FnOnce(String, DynamicImage, bool) + 'static,
     D: FnOnce() + 'static,
 {
     let Some(display) = gdk::Display::default() else {
@@ -233,9 +234,16 @@ pub fn show_prompt_overlay<F, D>(
     composer.append(&send_button);
     card.append(&composer);
 
-    // --- Quick-Action Chips ---
+    // --- Quick-Action Chips & Search Grounding ---
     let chip_bar = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
     chip_bar.add_css_class("prompt-chips-bar");
+
+    let search_toggle = gtk4::ToggleButton::with_label("Search Grounding");
+    search_toggle.add_css_class("prompt-search-chip");
+    search_toggle.set_tooltip_text(Some(
+        "Enable Gemini google_search grounding for live web lookup per request",
+    ));
+    chip_bar.append(&search_toggle);
 
     let chips = [
         (
@@ -267,6 +275,7 @@ pub fn show_prompt_overlay<F, D>(
     let submit_image = image_holder.clone();
     let submit_callback = on_submit_holder.clone();
     let submit_annots = annotations.clone();
+    let submit_search_toggle = search_toggle.clone();
 
     let submit = Rc::new(move |prompt_override: Option<String>| {
         let question = if let Some(override_text) = prompt_override {
@@ -288,12 +297,14 @@ pub fn show_prompt_overlay<F, D>(
             return;
         };
 
+        let search_grounding = submit_search_toggle.is_active();
+
         if let Some(window) = submit_window.upgrade() {
             window.close();
         }
 
         let final_image = apply_annotations_to_image(&raw_image, &submit_annots.borrow());
-        callback(question, final_image);
+        callback(question, final_image, search_grounding);
     });
 
     for (label, prompt_text) in chips {
@@ -304,6 +315,20 @@ pub fn show_prompt_overlay<F, D>(
         let submit_chip = submit.clone();
         chip_btn.connect_clicked(move |_| {
             submit_chip(Some(prompt_text.to_string()));
+        });
+        chip_bar.append(&chip_btn);
+    }
+
+    for (label, prompt_text) in &custom_chips {
+        let chip_btn = gtk4::Button::with_label(label);
+        chip_btn.add_css_class("prompt-chip");
+        chip_btn.add_css_class("custom-prompt-chip");
+        chip_btn.set_tooltip_text(Some(&format!("Custom prompt: {prompt_text}")));
+
+        let submit_chip = submit.clone();
+        let prompt_clone = prompt_text.clone();
+        chip_btn.connect_clicked(move |_| {
+            submit_chip(Some(prompt_clone.clone()));
         });
         chip_bar.append(&chip_btn);
     }

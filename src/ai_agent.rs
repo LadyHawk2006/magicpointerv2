@@ -139,13 +139,19 @@ fn parse_gemini_event(event: &str) -> Result<Vec<String>> {
 #[derive(Clone)]
 pub struct ConversationSession {
     contents: Arc<Mutex<Vec<Value>>>,
+    pub search_grounding: Arc<AtomicBool>,
 }
 
 impl ConversationSession {
     pub fn new() -> Self {
         Self {
             contents: Arc::new(Mutex::new(Vec::new())),
+            search_grounding: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn set_search_grounding(&self, enabled: bool) {
+        self.search_grounding.store(enabled, Ordering::Relaxed);
     }
 
     /// Appends the initial user turn with the captured screenshot
@@ -243,13 +249,25 @@ impl ConversationSession {
         response_started: Arc<AtomicBool>,
         settings: &AppSettings,
     ) -> Result<()> {
-        let body = json!({
+        let mut body = json!({
             "contents": history,
             "generationConfig": {
                 "temperature": settings.temperature,
                 "maxOutputTokens": settings.max_output_tokens
             }
         });
+
+        if self.search_grounding.load(Ordering::Relaxed) {
+            body["tools"] = json!([
+                { "google_search": {} }
+            ]);
+        }
+
+        if !settings.system_instruction.trim().is_empty() {
+            body["systemInstruction"] = json!({
+                "parts": [{ "text": settings.system_instruction.trim() }]
+            });
+        }
 
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(settings.connection_timeout_secs))

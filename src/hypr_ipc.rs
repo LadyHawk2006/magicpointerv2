@@ -95,3 +95,15 @@ pub fn get_visible_windows() -> Result<Vec<WindowGeometry>> {
         })
         .collect())
 }
+
+pub fn get_workspace_windows_summary() -> Result<String> {
+    let windows = get_visible_windows()?;
+    if windows.is_empty() {
+        return Ok("No open windows detected on active workspace.".to_string());
+    }
+    let mut lines = Vec::new();
+    for w in windows {
+        lines.push(format!("- [{}] \"{}\"", w.class, w.title));
+    }
+    Ok(lines.join("\n"))
+}
